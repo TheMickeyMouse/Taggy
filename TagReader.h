@@ -7,6 +7,7 @@
 #include "Utils/CStr.h"
 #include "Utils/Span.h"
 #include "Utils/String.h"
+#include "Utils/Variant.h"
 
 using namespace Quasi;
 
@@ -89,7 +90,7 @@ namespace ID3v2 {
         TFLT, TIME, TIT1, TIT2, TIT3, TKEY, TLAN, TLEN,
         TMED, TOAL, TOFN, TOLY, TOPE, TORY, TOWN, TPE1,
         TPE2, TPE3, TPE4, TPOS, TPUB, TRCK, TRDA, TRSN,
-        TRSO, TSIZ, TSRC, TSSE, TYER, TXXX, UFID, USER,
+        TRSO, TSIZ, TSRC, TSSE, TXXX, TYER, UFID, USER,
         USLT, WCOM, WCOP, WOAF, WOAR, WOAS, WORS, WPAY,
         WPUB, WXXX,
 
@@ -123,14 +124,67 @@ namespace ID3v2 {
     static constexpr const char* GetTagIDCode(TagID id) {
         return TAG_ID_NAME_LOOKUP[(u32)id];
     }
-    const char* GetTagIDJsonName(TagID id);
+
+    enum class TagFormat {
+        OTHER = 0, // means it depends on the tag id itself
+        TEXT,  // standard text format
+        YEAR,  // year format YYYY (4 chars)
+        NCHAR, // numeric string
+    };
+    struct TagRules {
+        bool allowsMultiple, supported, deprecated;
+        const char* jsonName, *properName;
+        TagFormat format;
+    };
+    const TagRules& GetTagRules(TagID id);
+
+    struct None {
+        void Print() const;
+    };
 
     // unique file identifier
     struct UFID {
         // spec section 4.1
         CStr owner;
         Bytes identifier;
+
+        void Print() const;
+        bool Read(BytesMut data);
     };
+
+    struct TextField {
+        String value;
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
+    struct CustomTextField {
+        String desc, value;
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
+    struct YearField { u32 year;       void Print() const; bool Read(BytesMut data); };
+    struct DateField { u32 month, day; void Print() const; bool Read(BytesMut data); };
+    struct TimeField { u32 hour, min;  void Print() const; bool Read(BytesMut data); };
+
+    struct NumberField {
+        u64 value;
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
+    using TagPayload = Variant<
+        None,
+        UFID,
+        TextField,
+        CustomTextField,
+        YearField,
+        DateField,
+        TimeField,
+        NumberField
+    >;
+    void PrintPayload(const TagPayload& payload);
 
     struct Tag {
         TagID id;
@@ -142,6 +196,7 @@ namespace ID3v2 {
         u16 version;
         u32 size;
         Vec<Tag> tags;
+        Vec<TagPayload> tagData;
     };
 }
 
@@ -152,17 +207,13 @@ public:
     Option<ID3v1> ReadV1();
 
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
-    bool ReadV2FrameHeader(Out<ID3v2::Tag&> tag);
+    bool ReadV2TagHeader(Out<ID3v2::Tag&> tag);
+    bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::TagPayload&> payload);
 
-    ArrayBox<char> ReadTagPayload(u32 size);
-    bool ReadV2UFID(u32 size, ID3v2::UFID& ufid);
-
-    bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result) const;
-    OptionUsize FindNullTerminator(bool isUtf16, Bytes string) const;
-    bool ReadV2TextField    (BytesMut data, String& textOut) const;
-    bool ReadV2UserTextField(BytesMut data, String& descOut, String& valOut) const;
-    bool ReadV2URLField     (BytesMut data, String& urlOut) const;
-    bool ReadV2UseURLField  (BytesMut data, String& descOut, String& urlOut) const;
+    ArrayBox<byte> ReadTagPayload(u32 size);
+    static bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead);
+    static bool ReadNumeric4Char(BytesMut string, char (&result) [4]);
+    static bool ReadNumericString(BytesMut string, u64& result);
 
     Option<ID3v2::Metadata> ReadV2();
 };
