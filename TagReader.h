@@ -132,7 +132,8 @@ namespace ID3v2 {
         NCHAR, // numeric string
     };
     struct TagRules {
-        bool allowsMultiple, supported, deprecated;
+        bool allowsMultiple, supported, deprecatedInV4;
+        u8 supportedMajorVersion;
         const char* jsonName, *properName;
         TagFormat format;
     };
@@ -174,6 +175,66 @@ namespace ID3v2 {
         bool Read(BytesMut data);
     };
 
+    struct PictureField {
+        u8 pictureType, fileType;
+        String desc;
+        ArrayBox<byte> pictureData;
+
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
+    // a 3 byte value, where each byte is a character (lowercase)
+    enum Language : u32 {
+        ENGLISH = "eng"_u32,
+        JAPANESE = "jpn"_u32,
+        PORTUGESE = "por"_u32
+    };
+    Array<char, 3> GetLangCode(Language lang);
+
+    struct UnsyncedLyricsField {
+        Language lang;
+        String desc, lyrics;
+
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
+    enum class SyncedContentType {
+        OTHER,         // is other
+        LYRICS,        // is lyrics
+        TRANSCRIPTION, // is text transcription
+        PART_NAME,     // is movement/part name (e.g. "Adagio")
+        EVENTS,        // is events (e.g. "Don Quijote enters the stage")
+        CHORDS,        // is chord (e.g. "Bb F Fsus")
+        POP_UP_INFO,   // is trivia/'pop up' information
+    };
+    enum class TimeStampUnit {
+        FRAMES,
+        MILLISECONDS,
+    };
+
+    struct SyncedLyrics {
+        // FORMAT: (always in native endian)
+        // /--- 4 ---\ /--- 4 ---\ /--- * --- ...
+        //  TIMESTAMP   LENGTH      LYRICS...
+        Vec<u8> raw;
+
+        void Print() const;
+        bool Read(bool isUtf16, BytesMut data);
+    };
+
+    struct SyncedLyricsField {
+        Language lang;
+        SyncedContentType type;
+        TimeStampUnit timeUnit;
+        String desc;
+        SyncedLyrics lyrics;
+
+        void Print() const;
+        bool Read(BytesMut data);
+    };
+
     using TagPayload = Variant<
         None,
         UFID,
@@ -182,7 +243,10 @@ namespace ID3v2 {
         YearField,
         DateField,
         TimeField,
-        NumberField
+        NumberField,
+        PictureField,
+        UnsyncedLyricsField,
+        SyncedLyricsField
     >;
     void PrintPayload(const TagPayload& payload);
 
@@ -191,9 +255,18 @@ namespace ID3v2 {
         u32 size;
     };
 
+    enum MpegVersion : u8 {
+        V1 = 1, V2, V2_5
+    };
+
     struct Metadata {
         // first 8 bits is major, other is minor
-        u16 version;
+        u16 tagVersion;
+        MpegVersion mpgVersion;
+        u8 layerVersion;
+        u16 samplingRate, bitrateKbps;
+        u8 channels;
+
         u32 size;
         Vec<Tag> tags;
         Vec<TagPayload> tagData;
@@ -201,14 +274,16 @@ namespace ID3v2 {
 }
 
 class TagReader {
-    std::ifstream file;
 public:
+    std::ifstream file;
+
     TagReader(const char* filename);
     Option<ID3v1> ReadV1();
 
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
     bool ReadV2TagHeader(Out<ID3v2::Tag&> tag);
     bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::TagPayload&> payload);
+    bool ReadMpegData(ID3v2::Metadata& meta);
 
     ArrayBox<byte> ReadTagPayload(u32 size);
     static bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead);
