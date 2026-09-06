@@ -28,6 +28,8 @@ int Help() {
         "   --lyrics=<lrcfile>    Sets the (unsycned) lyrics from a file source\n"
         "   --slyrics=<lrcfile>   Sets the (sycned) lyrics from a file source\n"
         "   --cover=<imagefile>   Sets the images from a file source\n"
+        "   -T...=<value>         Adds a custom text field tag\n"
+        "   --date=<date>         Sets the release date, format is YYYY-MM-DD\n"
     );
     return 0;
 }
@@ -92,6 +94,14 @@ int main(int argc, char *argv[]) {
             outputFilePath = outputFile.IntoCStr();
         } else if (option == "-h") {
             return Help();
+        } else if (option.StartsWith("-T")) {
+            const auto [desc, value] = option.RemovePrefix("-T").SplitOnce('=');
+            fields.Push(Tags::Custom(desc, ParseStringInput(value)));
+        } else if (option.StartsWith("--date=")) {
+            const auto [year, date] = option.RemovePrefix("--date=").SplitOnce('-');
+            char mmdd[4] = { date[0], date[1], date[3], date[4] }; // skip '-'
+            fields.Push(Tags::Year(year));
+            fields.Push(Tags::Date(Str::Slice(mmdd, 4)));
         } else if (option.StartsWith("--artist=")) {
             fields.Push(Tags::Artist(ParseStringInput(option.RemovePrefix("--artist="))));
         } else if (option.StartsWith("--album=")) {

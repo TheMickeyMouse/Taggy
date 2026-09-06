@@ -541,6 +541,10 @@ ID3v2::TagFieldPair ID3v2::Tags::AlbumArtist(Str artist) {
     return { TagID::TPE2, TextField(artist) };
 }
 
+ID3v2::TagFieldPair ID3v2::Tags::Custom(Str desc, String value) {
+    return { TagID::TXXX, CustomTextField(desc, std::move(value)) };
+}
+
 ID3v2::TagFieldPair ID3v2::Tags::UsLyrics(String unsynced) {
     return { TagID::USLT, TextField(std::move(unsynced)) };
 }
@@ -585,6 +589,14 @@ ID3v2::TagFieldPair ID3v2::Tags::Cover(Vec<byte> coverData) {
 
 ID3v2::TagFieldPair ID3v2::Tags::Explicit() {
     return { TagID::TXXX, CustomTextField("RATING", "EXPLICIT") };
+}
+
+ID3v2::TagFieldPair ID3v2::Tags::Year(Str year) {
+    return { TagID::TYER, TextField(year) };
+}
+
+ID3v2::TagFieldPair ID3v2::Tags::Date(Str date) {
+    return { TagID::TDAT, TextField(date) };
 }
 
 TagReader::TagReader(const char* filename)
