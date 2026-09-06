@@ -92,10 +92,7 @@ namespace ID3v2 {
         TPE2, TPE3, TPE4, TPOS, TPUB, TRCK, TRDA, TRSN,
         TRSO, TSIZ, TSRC, TSSE, TXXX, TYER, UFID, USER,
         USLT, WCOM, WCOP, WOAF, WOAR, WOAS, WORS, WPAY,
-        WPUB, WXXX,
-
-        CUSTOM_X = 1 << 25, CUSTOM_Y = 1 << 26, CUSTOM_Z = 1 << 27,
-        CUSTOM = CUSTOM_X | CUSTOM_Y | CUSTOM_Z,
+        WPUB, WXXX, LAST_NORMAL,
     };
     static constexpr u32 TAG_ID_NAMES_INDEX[] = {
         "AENC"_u32, "APIC"_u32, "COMM"_u32, "COMR"_u32, "ENCR"_u32, "EQUA"_u32, "ETCO"_u32, "GEOB"_u32,
@@ -122,7 +119,7 @@ namespace ID3v2 {
         "WPUB", "WXXX",
     };
     static constexpr const char* GetTagIDCode(TagID id) {
-        return TAG_ID_NAME_LOOKUP[(u32)id];
+        return TAG_ID_NAME_LOOKUP[(u32)id - 1];
     }
 
     enum class TagFormat {
@@ -141,6 +138,7 @@ namespace ID3v2 {
 
     struct None {
         void Print() const;
+        bool Write(Vec<byte>&) const;
     };
 
     // unique file identifier
@@ -151,37 +149,60 @@ namespace ID3v2 {
 
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
     struct TextField {
         String value;
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
+
+        static TextField FromList(Span<const Str> vals);
     };
 
     struct CustomTextField {
         String desc, value;
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
-    struct YearField { u32 year;       void Print() const; bool Read(BytesMut data); };
-    struct DateField { u32 month, day; void Print() const; bool Read(BytesMut data); };
-    struct TimeField { u32 hour, min;  void Print() const; bool Read(BytesMut data); };
+    struct YearField {
+        u32 year;
+        void Print() const;
+        bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
+    };
+    struct DateField {
+        u32 month, day;
+        void Print() const;
+        bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
+    };
+    struct TimeField {
+        u32 hour, min;
+        void Print() const;
+        bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
+    };
 
     struct NumberField {
         u64 value;
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
     struct PictureField {
+        // filetype = 0: png, 1: jpeg
         u8 pictureType, fileType;
         String desc;
         ArrayBox<byte> pictureData;
 
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
     // a 3 byte value, where each byte is a character (lowercase)
@@ -198,6 +219,7 @@ namespace ID3v2 {
 
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
     enum class SyncedContentType {
@@ -220,8 +242,14 @@ namespace ID3v2 {
         //  TIMESTAMP   LENGTH      LYRICS...
         Vec<u8> raw;
 
+        // iterator pattern; yields timestamp + lyrics
+        static Tuple<u32, Str> Next(Bytes& data);
+
         void Print() const;
         bool Read(bool isUtf16, BytesMut data);
+        bool Write(bool isUtf16, Vec<byte>& data) const;
+        bool NeedsUtf16() const;
+        void Add(u32 timestamp, Str lyrics);
     };
 
     struct SyncedLyricsField {
@@ -233,9 +261,10 @@ namespace ID3v2 {
 
         void Print() const;
         bool Read(BytesMut data);
+        bool Write(Vec<byte>& data) const;
     };
 
-    using TagPayload = Variant<
+    using Field = Variant<
         None,
         UFID,
         TextField,
@@ -248,11 +277,13 @@ namespace ID3v2 {
         UnsyncedLyricsField,
         SyncedLyricsField
     >;
-    void PrintPayload(const TagPayload& payload);
+    void PrintField(const Field& field);
+    bool WriteField(const Field& field, Vec<byte>& data);
 
     struct Tag {
         TagID id;
-        u32 size;
+        u32 size = 0;
+        Tag(TagID id = TagID::NONE, u32 size = 0) : id(id), size(size) {}
     };
 
     enum MpegVersion : u8 {
@@ -269,8 +300,25 @@ namespace ID3v2 {
 
         u32 size;
         Vec<Tag> tags;
-        Vec<TagPayload> tagData;
+        Vec<Field> tagFields;
     };
+
+    struct TagFieldPair {
+        Tag tag;
+        Field field;
+    };
+
+    namespace Tags {
+        TagFieldPair Artist(Str artists);
+        TagFieldPair Album(Str album);
+        TagFieldPair Title(Str title);
+        TagFieldPair Disc(Str num);
+        TagFieldPair AlbumArtist(Str artist);
+        TagFieldPair UsLyrics(String unsynced);
+        TagFieldPair SyLyrics(Str synced);
+        TagFieldPair Cover(Vec<byte> coverData);
+        TagFieldPair Explicit();
+    }
 }
 
 class TagReader {
@@ -282,8 +330,8 @@ public:
 
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
     bool ReadV2TagHeader(Out<ID3v2::Tag&> tag);
-    bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::TagPayload&> payload);
-    bool ReadMpegData(ID3v2::Metadata& meta);
+    bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload);
+    static bool ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<OptRef<u32>> firstPosition = nullptr);
 
     ArrayBox<byte> ReadTagPayload(u32 size);
     static bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead);
@@ -291,4 +339,22 @@ public:
     static bool ReadNumericString(BytesMut string, u64& result);
 
     Option<ID3v2::Metadata> ReadV2();
+};
+
+class TagWriter {
+public:
+    std::ifstream input;
+    std::ofstream file;
+    TagWriter(const char* source, const char* filename);
+
+    bool WriteV2(Span<const ID3v2::TagFieldPair> tags);
+    void WriteV2Header(u32 size);
+    static bool WriteV2TagHeader(byte* data, const ID3v2::Tag& tag); // always writes 10 bytes
+    static void WriteMpegFrames(std::istream& input, std::ostream& output);
+
+    static bool NeedsUtf16(Str text);
+    static bool WriteUtfString(bool useUtf16, Vec<byte>& data, Str text, bool includeNullTerm = true);
+    static bool WriteLatinString(Vec<byte>& data, Str text, bool includeNullTerm = true);
+    static bool WriteUtf16String(Vec<byte>& data, Str text, bool includeNullTerm = true);
+
 };

@@ -7,26 +7,46 @@
 
 using namespace Quasi;
 
-int main() {
-    Debug::QInfo$("Hello, World!");
+String ParseStringInput(Str string) {
+    if (string.StartsWith('\"') && string.EndsWith('\"')) return string.Unescape().Assert("bad string input!");
+    return string;
+}
 
-    constexpr const char* FILE_PATH = "Cheap Thrills - Sia_lyrics.mp3";
-    TagReader tagReader = { FILE_PATH };
+int Help() {
+    Text::PrintLn(
+        "taggy version 1.0.0, build from https://github.com/TheMickeyMouse/Taggy\n"
+        "mp3 tag extractor and editor cli tool\n"
+        "usage: taggy [input-file] [options] [-o [output-file]]\n"
+        "   -h, --help            Display the help screen\n"
+        "   -o                    Writes the destination file to the path specified after\n"
+        "   --artist=<name>       Sets the artist name\n"
+        "   --title=<name>        Sets the title\n"
+        "   --album=<name>        Sets the album name\n"
+        "   --albart=<name>       Sets the album artist name\n"
+        "   --disc=<number>       Sets the disc number\n"
+        "   --explicit            Adds the explicit tag\n"
+        "   --lyrics=<lrcfile>    Sets the (unsycned) lyrics from a file source\n"
+        "   --slyrics=<lrcfile>   Sets the (sycned) lyrics from a file source\n"
+        "   --cover=<imagefile>   Sets the images from a file source\n"
+    );
+    return 0;
+}
 
+int ReadMp3Tags(CStr path) {
+    TagReader tagReader = { path.Data() };
+    if (const auto m = tagReader.ReadV1(); m) {
+        Debug::QWarn$("ID3v1 tag exists");
+    }
     if (const auto m = tagReader.ReadV2(); m) {
         const auto& metadata = *m;
         Text::Print("Found tag: ID3v2.{}.{}; {} bytes in total", metadata.tagVersion >> 8, metadata.tagVersion & 0xFF, metadata.size);
-        for (const auto& [tag, data] : Iter::Zip(metadata.tags.Iter(), metadata.tagData.Iter())) {
+        for (const auto& [tag, data] : Iter::Zip(metadata.tags.Iter(), metadata.tagFields.Iter())) {
             Text::Print("\n\t{:<16} ({} bytes): ", ID3v2::GetTagRules(tag.id).properName, tag.size);
-            PrintPayload(data);
-
-            if (tag.id == ID3v2::TagID::APIC) {
-                Text::WriteFileBinary("cover.png", data.As<ID3v2::PictureField>()->pictureData);
-            }
+            PrintField(data);
         }
 
         tagReader.file.seekg(0, std::ios::end);
-        Text::PrintLn("\nTotal file size: {} bytes", std::filesystem::file_size(FILE_PATH));
+        Text::PrintLn("\nTotal file size: {} bytes", std::filesystem::file_size(path.Data()));
         Text::PrintLn("Statistics:\n\tMPEG Version {} Layer {}\n\tBitrate: {}kbps, Sampling rate: {}Hz, Channels: {}",
             (Array {{ "_", "1", "2", "2.5" }})[metadata.mpgVersion],
             (Array {{ "_", "I", "II", "III" }})[metadata.layerVersion],
@@ -34,9 +54,88 @@ int main() {
             metadata.samplingRate,
             (int)metadata.channels
         );
+        return 0;
     } else {
         Text::PrintLn("Tag not found!");
+        return 1;
+    }
+}
+
+int WriteMp3Tags(CStr ipath, CStr opath, Span<const ID3v2::TagFieldPair> fields) {
+    TagWriter tagWriter = { ipath.Data(), opath.Data() };
+    return tagWriter.WriteV2(fields) ? 0 : 1;
+}
+
+int main(int argc, char *argv[]) {
+    using namespace ID3v2;
+    if (argc < 2) {
+        Debug::QError$("no file provided! -h for help.");
     }
 
-    return 0;
+    String inputFile = ParseStringInput(argv[1]), outputFile;
+    CStr inputFilePath = inputFile.IntoCStr(), outputFilePath;
+
+    if (argc == 2) { // just write out mp3 contents
+        if (Str(argv[1]) == "-h") return Help();
+        return ReadMp3Tags(inputFilePath);
+    }
+
+    Vec<TagFieldPair> fields;
+    for (u32 i = 2; i < argc; ++i) {
+        CStr option = argv[i];
+        if (option == "-o") {
+            if (i + 1 >= argc) {
+                Debug::QError$("-o specified but no output file path after it! -h for help");
+                return 1;
+            }
+            outputFile = ParseStringInput(argv[++i]);
+            outputFilePath = outputFile.IntoCStr();
+        } else if (option == "-h") {
+            return Help();
+        } else if (option.StartsWith("--artist=")) {
+            fields.Push(Tags::Artist(ParseStringInput(option.RemovePrefix("--artist="))));
+        } else if (option.StartsWith("--album=")) {
+            fields.Push(Tags::Album(ParseStringInput(option.RemovePrefix("--album="))));
+        } else if (option.StartsWith("--title=")) {
+            fields.Push(Tags::Title(ParseStringInput(option.RemovePrefix("--title="))));
+        } else if (option.StartsWith("--disc=")) {
+            fields.Push(Tags::Title(ParseStringInput(option.RemovePrefix("--title="))));
+        } else if (option.StartsWith("--albart=")) {
+            fields.Push(Tags::AlbumArtist(ParseStringInput(option.RemovePrefix("--albart="))));
+        } else if (option.StartsWith("--lyrics=")) {
+            String lyricsPath = ParseStringInput(option.RemovePrefix("--lyrics="));
+            Option<String> lyrics = Text::ReadFile(lyricsPath.IntoCStr());
+            if (!lyrics) {
+                Debug::QError$("couldn't find lyrics file {}!", lyricsPath);
+                return 1;
+            }
+
+            fields.Push(Tags::UsLyrics(*lyrics));
+        } else if (option.StartsWith("--slyrics=")) {
+            String lyricsPath = ParseStringInput(option.RemovePrefix("--slyrics="));
+            Option<String> lyrics = Text::ReadFile(lyricsPath.IntoCStr());
+            if (!lyrics) {
+                Debug::QError$("couldn't find lyrics file {}!", lyricsPath);
+                return 1;
+            }
+
+            fields.Push(Tags::SyLyrics(*lyrics));
+        } else if (option.StartsWith("--cover=")) {
+            String coverPath = ParseStringInput(option.RemovePrefix("--cover="));
+            Option<String> cover = Text::ReadFileBinary(coverPath.IntoCStr());
+            if (!cover) {
+                Debug::QError$("couldn't find cover image file {}!", coverPath);
+                return 1;
+            }
+
+            fields.Push(Tags::Cover(cover->IntoBytes()));
+        } else if (option == "--explicit") {
+            fields.Push(Tags::Explicit());
+        } else {
+            Debug::QError$("unrecognized option '{}', aborting! -h for help", option);
+            return 1;
+        }
+    }
+
+    return WriteMp3Tags(inputFilePath, outputFilePath, fields);
 }
