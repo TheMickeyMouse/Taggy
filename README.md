@@ -30,10 +30,11 @@ Tags can be further added through the options:
 --album=<name>        Sets the album name
 --albart=<name>       Sets the album artist name
 --disc=<number>       Sets the disc number
+--track=<number>      Sets the track number
+--date=<date>         Sets the release date, format is YYYY-MM-DD
 --explicit            Adds the explicit tag
 --lyrics=<lrcfile>    Sets the (unsycned) lyrics from a file source
 --slyrics=<lrcfile>   Sets the (sycned) lyrics from a file source
 --cover=<imagefile>   Sets the images from a file source
 -T...=<value>         Adds a custom text field tag
---date=<date>         Sets the release date, format is YYYY-MM-DD
 ```

@@ -65,7 +65,7 @@ namespace ID3v2 {
         { NO,  YES, NO,  3, "band",             "Band",              TagFormat::TEXT  }, //   TPE2: (additional info for artists)
         { NO,  YES, NO,  3, "conductor",        "Conductor",         TagFormat::TEXT  }, // U TPE3: (conductor)
         { NO,  YES, NO,  3, "remixedBy",        "Remixed By",        TagFormat::TEXT  }, // X TPE4: (info about remix creator)
-        { NO,  YES, NO,  3, "part",             "Part",              TagFormat::NCHAR }, // U TPOS: (which part the audio came from, if the album contains many mediums
+        { NO,  YES, NO,  3, "disc",             "Disc",              TagFormat::NCHAR }, // U TPOS: (which disc the audio came from, if the album contains many mediums
         { NO,  YES, NO,  3, "publisher",        "Publisher",         TagFormat::TEXT  }, // X TPUB: (publisher)
         { NO,  YES, NO,  3, "trackNumber",      "Track Number",      TagFormat::NCHAR }, // U TRCK: (#, same format as TPOS)
         { NO,  YES, NO,  3, "recordedDate",     "Recorded Date",     TagFormat::TEXT  }, // X TRDA: (complement to other date info, any text no specific format, ex: 4th-7th June)
@@ -534,6 +534,10 @@ ID3v2::TagFieldPair ID3v2::Tags::Title(Str title) {
 }
 
 ID3v2::TagFieldPair ID3v2::Tags::Disc(Str num) {
+    return { TagID::TPOS, TextField(num) };
+}
+
+ID3v2::TagFieldPair ID3v2::Tags::Track(Str num) {
     return { TagID::TRCK, TextField(num) };
 }
 
@@ -546,24 +550,30 @@ ID3v2::TagFieldPair ID3v2::Tags::Custom(Str desc, String value) {
 }
 
 ID3v2::TagFieldPair ID3v2::Tags::UsLyrics(String unsynced) {
-    return { TagID::USLT, TextField(std::move(unsynced)) };
+    return { TagID::USLT, UnsyncedLyricsField(ENGLISH, "", std::move(unsynced)) };
 }
 
 ID3v2::TagFieldPair ID3v2::Tags::SyLyrics(Str synced) {
     // format: [mm:ss.ms]
     SyncedLyrics lyrics;
     for (const Str line : synced.Lines()) {
-        if (line[0] != '[' || line[3] != ':' || line[6] != '.' || line[9] != ']') {
+        if (!line) continue;
+        if (line[0] != '[' || line[3] != ':' || line[6] != '.' || (line[9] != ']' && line[10] != ']')) {
             Debug::QWarn$("skipping bad synced lyrics: {}", line);
             continue;
         }
+        // true if uses MM:SS.mmm instead
+        const bool longFormat = line[9] != ']' && line[10] == ']';
+
         // read in little endian (C is centiseconds)  C C  .  S S  :  M M
         u64 cc_ss_mm = Memory::ReadU64(&line[1]) & 0x0F0F'00'0F0F'00'0F0F;
         cc_ss_mm *= 2561; // now is C _ _ S _ _ M _
         const u32 m = (cc_ss_mm >> 8) & 0xFF, s = (cc_ss_mm >> 32) & 0xFF, c = (cc_ss_mm >> 56) & 0xFF;
-        const u64 millis = m * 60'000 + s * 1000 + c * 10;
+        u64 millis = m * 60'000 + s * 1000 + c * 10;
 
-        lyrics.Add(millis, line.Skip(10));
+        if (longFormat) { millis += line[9] - '0'; }
+
+        lyrics.Add(millis, line.Skip(10 + longFormat));
     }
 
     return { TagID::SYLT, SyncedLyricsField(
@@ -574,7 +584,7 @@ ID3v2::TagFieldPair ID3v2::Tags::SyLyrics(Str synced) {
 
 ID3v2::TagFieldPair ID3v2::Tags::Cover(Vec<byte> coverData) {
     u8 imageType = ~0;
-    if (coverData.First(2) == CArray<byte, 8> { 0xFF, 0xD8 }) {
+    if (coverData.First(2) == CArray<byte, 2> { 0xFF, 0xD8 }) {
         // see https://en.wikipedia.org/wiki/JPEG_File_Interchange_Format#File_format_structure; jpeg SOI (start of image)
         imageType = 1;
     } else if (coverData.First(8) == CArray<byte, 8> { 0x89, 'P', 'N', 'G', 0xD, 0xA, 0x1A, 0xA }) {
@@ -600,7 +610,7 @@ ID3v2::TagFieldPair ID3v2::Tags::Date(Str date) {
 }
 
 TagReader::TagReader(const char* filename)
-    : file(filename, std::ios::in | std::ios::binary) {
+    : file(std::filesystem::path(filename), std::ios::in | std::ios::binary) {
     if (file.fail()) {
         Debug::QError$("Failed to open file {}!", filename);
     }
@@ -939,12 +949,9 @@ bool TagReader::ReadNumericString(BytesMut string, u64& result) {
             result += string[i] - '0';
         }
     } else {
-        // remove null term
-        if (string.Last() != 0) {
-            Debug::QError$("no null terminator in string!");
-            return false;
-        }
-        if (const auto res = Text::Parse<u64>(string.First(string.Length() - 1).AsStr())) {
+        // split at null terminator
+        const Str truncStr = string.First(string.FindIndex(0).UnwrapOr(string.Length())).AsStr();
+        if (const auto res = Text::Parse<u64>(truncStr)) {
             result = *res;
         } else return false;
     }
@@ -975,8 +982,8 @@ Option<ID3v2::Metadata> TagReader::ReadV2() {
 }
 
 TagWriter::TagWriter(const char* source, const char* filename)
-    : input(source, std::ios::binary),
-      file(filename, std::ios::trunc | std::ios::binary) {
+    : input(std::filesystem::path(source), std::ios::binary),
+      file(std::filesystem::path(filename), std::ios::trunc | std::ios::binary) {
     if (input.fail()) {
         Debug::QError$("Failed to open input file {}!", source);
     }
@@ -1068,7 +1075,7 @@ void TagWriter::WriteMpegFrames(std::istream& input, std::ostream& output) {
 bool TagWriter::NeedsUtf16(Str text) {
     for (const auto c : Text::CodepointIter::FromUtf8(text)) {
         Debug::QAssert$(c.HasValue(), "invalid character!");
-        if (*c >= 0xFF) return true; // cannot be contained in latin
+        if (*c > 0x7F) return true; // requires utf16
     }
     return false;
 }

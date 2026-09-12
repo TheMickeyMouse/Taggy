@@ -313,6 +313,7 @@ namespace ID3v2 {
         TagFieldPair Album(Str album);
         TagFieldPair Title(Str title);
         TagFieldPair Disc(Str num);
+        TagFieldPair Track(Str num);
         TagFieldPair AlbumArtist(Str artist);
         TagFieldPair Custom(Str desc, String value);
         TagFieldPair UsLyrics(String unsynced);

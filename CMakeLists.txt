@@ -7,5 +7,6 @@ add_subdirectory(Quasi)
 add_executable(Taggy main.cpp
         TagReader.cpp
         TagReader.h
-        nlohmann-json.h)
+        nlohmann-json.h
+        CLI.cpp)
 target_link_libraries(Taggy Quasi)
