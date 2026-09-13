@@ -8,5 +8,9 @@ add_executable(Taggy main.cpp
         TagReader.cpp
         TagReader.h
         nlohmann-json.h
-        CLI.cpp)
-target_link_libraries(Taggy Quasi)
+        CLI.cpp
+        App.cpp
+        App.h
+        WinUtils.cpp
+        WinUtils.h)
+target_link_libraries(Taggy Quasi dwmapi.dll)
