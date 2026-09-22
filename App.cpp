@@ -2,15 +2,22 @@
 
 #include <thread>
 
+#include "glp.h"
 #include "WinUtils.h"
 
-App::App(int w, int h, bool debug)
+App::App(int w, int h)
     : gd(GraphicsDevice::Initialize({ w, h }, { .beginPosition = { 300 }, .windowTitle = "Taggy" })),
       canvas(gd), windowSize { w, h },
-      debugMode(debug) {
+
+      root(UIRect::Root({ 0, (fv2)windowSize })),
+      titlebar(root.Pack(Dir::TOP, TITLEBAR_HEIGHT * Length::PX)),
+      sidebar(root.Pack(Dir::LEFT, (48.0f + 20.0f) * Length::PX), canvas)
+{
+
     glfwSetWindowSizeLimits(gd.GetWindow(), 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
     WinUtils::UseCustomTitlebar(gd.GetWindow(), TITLEBAR_HEIGHT, TITLEBAR_HEIGHT);
     canvas.FlipYDirection();
+    canvas.SetFont(font = Font::LoadFile("C:/Users/User/AppData/Local/Microsoft/Windows/Fonts/JetBrainsMono-Bold.ttf", 48.0f));
 }
 
 const GLFWwindow* App::Window() const {
@@ -28,65 +35,28 @@ float App::Height() const {
     return (float)windowSize.y;
 }
 
-void App::DrawWindowBtns() {
-    [[maybe_unused]] const auto _ = canvas.PushTransform();
-    canvas.transform.scale = TITLEBAR_HEIGHT;
-    DrawCloseBtn(0);
-    DrawCloseBtn(1);
-    DrawCloseBtn(2);
-}
+void App::OnScreenResize() {
+    windowSize = gd.GetWindowSize();
+    canvas.SetViewport({ { 0, (float)windowSize.y }, { (float)windowSize.x, 0 } });
+    canvas.SetCanvasSize(windowSize);
 
-void App::DrawCloseBtn(int btnNum) {
-    const float x = Width() - TITLEBAR_HEIGHT * (btnNum + 1);
-    canvas.transform.pos = { x, 0 };
-    const fRect2D rect = { { x + 1, 0 }, { x + TITLEBAR_HEIGHT, TITLEBAR_HEIGHT } };
-
-    enum BtnType { CLOSE, FULLSCREEN, MINIMIZE } type = (BtnType)btnNum;
-
-    const auto& io = gd.GetIO();
-    const bool hover = io.GetMousePos().IsIn(rect);
-
-    canvas.Fill(hover ? type == CLOSE ? 0xc51f1f_rgb : 0x5c6370_rgb : 0x171a1f_rgb);
-    if (hover) {
-        canvas.NoStroke();
-        canvas.DrawRect({ 0, 1 });
-    }
-
-    canvas.Stroke(0xabb2bf_rgb);
-    canvas.StrokeWeight(0.5f / TITLEBAR_HEIGHT);
-
-    switch (type) {
-        case CLOSE: // x
-            canvas.DrawLine(0.4, 0.6);
-            canvas.DrawLine({ 0.6, 0.4 }, { 0.4, 0.6 });
-            break;
-        case FULLSCREEN:
-            canvas.StrokeJoin(UIRender::MITER_JOIN);
-            if (glfwGetWindowAttrib(Window(), GLFW_MAXIMIZED)) {
-                canvas.DrawRect({ { 0.43, 0.4 }, { 0.6, 0.57 } });
-                canvas.DrawRect({ { 0.4, 0.45 }, { 0.55, 0.6 } });
-            } else {
-                canvas.DrawRect({ 0.4, 0.6 });
-            }
-            canvas.StrokeJoin(UIRender::ROUND_JOIN);
-            break;
-        case MINIMIZE:
-            canvas.DrawLine({ 0.4, 0.5 }, { 0.6, 0.5 });
-            break;
-    }
+    // ui handling
+    root.rect = { 0, (fv2)windowSize };
+    root.ComputeLayout();
 }
 
 void App::Update() {
     if (gd.GetWindowSize() != windowSize) { // resize happened
-        windowSize = gd.GetWindowSize();
-        canvas.SetViewport({ { 0, (float)windowSize.y }, { (float)windowSize.x, 0 } });
+        OnScreenResize();
     }
+    root.CheckHover(gd.GetIO().GetMousePos());
 }
 
 bool App::Run() {
     Update();
+
     gd.Begin();
-    gd.ClearColor(0x272b34_rgb);
+    // gd.ClearColor(0x272b34_rgb);
     canvas.BeginFrame();
 
     const auto& io = gd.GetIO();
@@ -95,17 +65,33 @@ bool App::Run() {
     }
 
     canvas.NoStroke();
-    canvas.Fill(0x171a1f_rgb);
-    canvas.DrawRect({ 0, { Width(), TITLEBAR_HEIGHT } });
-    DrawWindowBtns();
+    canvas.Fill(0x272b34_rgb);
+    canvas.DrawRect({ 0, { Width(), Height() } });
 
-    canvas.StrokeWeight(5);
-    canvas.Stroke(1);
-    canvas.DrawPoint(io.GetMousePos());
-    canvas.DrawText(Text::Format("WPos = {}", gd.GetWindowPos()), 20.0f, { 0, Height() - 66 }, { .alignment = TextAlign::LEFT });
-    canvas.DrawText(Text::Format("LClick = {}", io.LeftMouse().ClickedPos()), 20.0f, { 0, Height() - 48 }, { .alignment = TextAlign::LEFT });
-    canvas.DrawText(Text::Format("Mouse = {}", io.GetMousePos()), 20.0f, { 0, Height() - 30 }, { .alignment = TextAlign::LEFT });
-    canvas.DrawText(Text::Format("FPS = {}", io.Framerate()), 20.0f, { 0, Height() - 12 }, { .alignment = TextAlign::LEFT });
+    titlebar.Draw(canvas);
+    sidebar.Draw(canvas);
+
+    debugMode ^= io["I"].OnPress() && io.Shift();
+    if (debugMode) {
+        canvas.StrokeWeight(5);
+        canvas.Stroke(1);
+        // canvas.DrawPoint(io.GetMousePos());
+        canvas.DrawText(
+            Text::Format(
+                "WPos   = {}; {}x{}\n"
+                "LClick = {}\n"
+                "Mouse  = {}\n"
+                "FPS    = {}\n",
+                gd.GetWindowPos(), gd.GetWindowSize().x, gd.GetWindowSize().y,
+                io.LeftMouse().ClickedPos(),
+                io.GetMousePos(),
+                std::llround(io.Framerate())
+            ),
+            20.0f,
+            { 0, Height() - 40 },
+            { .alignment = TextAlign::LEFT }
+        );
+    }
 
     canvas.EndFrame();
     gd.End();

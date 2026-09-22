@@ -12,5 +12,14 @@ add_executable(Taggy main.cpp
         App.cpp
         App.h
         WinUtils.cpp
-        WinUtils.h)
+        WinUtils.h
+        UIRect.cpp
+        UIRect.h
+        Titlebar.cpp
+        Titlebar.h
+        Sidebar.cpp
+        Sidebar.h
+        Icon.cpp
+        Icon.cpp
+        Icon.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)
