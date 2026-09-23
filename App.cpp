@@ -55,6 +55,7 @@ void App::Update() {
 bool App::Run() {
     Update();
 
+    const float dt = std::min(gd.GetIO().DeltaTime(), 0.333f);
     gd.Begin();
     // gd.ClearColor(0x272b34_rgb);
     canvas.BeginFrame();
@@ -91,6 +92,10 @@ bool App::Run() {
             { 0, Height() - 40 },
             { .alignment = TextAlign::LEFT }
         );
+    }
+
+    {
+        sidebar.Update(dt);
     }
 
     canvas.EndFrame();

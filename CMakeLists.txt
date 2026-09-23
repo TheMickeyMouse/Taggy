@@ -21,5 +21,6 @@ add_executable(Taggy main.cpp
         Sidebar.h
         Icon.cpp
         Icon.cpp
-        Icon.h)
+        Icon.h
+        Smooth.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)
