@@ -22,5 +22,11 @@ add_executable(Taggy main.cpp
         Icon.cpp
         Icon.cpp
         Icon.h
-        Smooth.h)
+        Smooth.h
+        MusicDisplay.cpp
+        MusicDisplay.h
+        Playbar.cpp
+        Playbar.h
+        Track.cpp
+        Track.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)

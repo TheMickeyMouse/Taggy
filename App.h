@@ -1,8 +1,10 @@
 #pragma once
 #include "GraphicsDevice.h"
-#include "Icon.h"
+#include "MusicDisplay.h"
+#include "Playbar.h"
 #include "Sidebar.h"
 #include "Titlebar.h"
+#include "Track.h"
 #include "UIRect.h"
 #include "GUI/Canvas.h"
 
@@ -18,11 +20,13 @@ class App {
     bool debugMode = false;
 
     // ui stuff
-    UIRect root;
-    Titlebar titlebar;
-    Sidebar sidebar;
+    UIRect uRoot;
+    Titlebar uTitlebar;
+    Playbar uPlaybar;
+    Sidebar uSidebar;
+    MusicDisplay uMusic;
 
-    static constexpr float TITLEBAR_HEIGHT = 40.0f, SIDEBAR_WIDTH = 80.0f;
+    Track track;
 public:
     App(int w, int h);
 

@@ -18,15 +18,17 @@ namespace Anim {
     template <class T> using Floatify = decltype(FloatifyVal<T>());
 }
 
+enum class Speed { SLOW = 6, MEDIUM = 8, FAST = 12 };
+
 template <class T>
 struct Smooth {
     using F = Anim::Floatify<T>;
 
     T target;
     F displayValue;
-    float smoothness = 1.0f;
+    float smoothness;
 
-    Smooth(T x) : target(x), displayValue(x) {}
+    Smooth(T x, Speed speed = Speed::MEDIUM) : target(x), displayValue(x), smoothness((float)speed) {}
 
     void Update(float dt) {
         displayValue = Anim::Lerp(displayValue, (F)target, smoothness * dt);
@@ -36,6 +38,6 @@ struct Smooth {
     }
 
     void Jump() { displayValue = (F)target; }
-
+    void Set(const T& val) { target = val; }
     bool IsStable() const { return displayValue == target; }
 };

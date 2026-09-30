@@ -1,14 +1,20 @@
 #include "Icon.h"
 
 Icon Icon::FromSVG(Str src, Canvas& canvas) {
+    // static constexpr float UPSCALE_FACTOR = 3.0f;
+
     Icon icon;
     [[maybe_unused]] const auto _ = canvas.RenderTo(icon.mesh);
     [[maybe_unused]] const auto _2 = canvas.PushStyles();
+    // [[maybe_unused]] const auto _3 = canvas.PushTransform();
+
+    // canvas.transform.scale = UPSCALE_FACTOR;
 
     canvas.NoFill();
     canvas.Stroke(1);
 
     ParseSVGHeader(src, icon, canvas);
+    // icon.viewBox = icon.viewBox.Scale(UPSCALE_FACTOR);
 
     while (src) {
         src = src.TrimStart();
@@ -24,26 +30,43 @@ Icon Icon::FromSVG(Str src, Canvas& canvas) {
 
             fv2 center;
             float radius = 1;
-            while (!src.StartsWith("/>")) {
-                src = src.TrimStart();
 
-                auto [propName, value] = src.SplitOnce('=');
-                Debug::QAssert$(value[0] == '"', "no opening quotation mark");
-                value.Advance(1);
-                value.SplitOnce('"').TieTo(value, src);
-
-                if (propName == "cx") {
-                    center.x = Text::Parse<float>(value).Assert();
-                } else if (propName == "cy") {
-                    center.y = Text::Parse<float>(value).Assert();
-                } else if (propName == "r") {
-                    radius = Text::Parse<float>(value).Assert();
-                } else {
+            Str propName, value;
+            while (ParseProperties(src, propName, value)) {
+                const float v = Text::Parse<float>(value).Assert();
+                if      (propName == "cx") center.x = v;
+                else if (propName == "cy") center.y = v;
+                else if (propName == "r")  radius = v;
+                else {
                     Debug::QWarn$("skipping property name {} for circle", propName);
                 }
             }
             src.Advance(2); // "/>"
             canvas.DrawCircle(center, radius);
+        } else if (src.StartsWith("<rect")) {
+            src = src.RemovePrefix("<rect");
+
+            fv2 pos, size;
+            float radius = 0;
+
+            Str propName, value;
+            while (ParseProperties(src, propName, value)) {
+                const float v = Text::Parse<float>(value).Assert();
+                if      (propName == "x")      pos.x = v;
+                else if (propName == "y")      pos.y = v;
+                else if (propName == "width")  size.x = v;
+                else if (propName == "height") size.y = v;
+                else if (propName == "rx")     radius = v;
+                else {
+                    Debug::QWarn$("skipping property name {} for circle", propName);
+                }
+            }
+
+            src.Advance(2); // "/>"
+
+            if (radius != 0) canvas.DrawRoundedRect({ pos, pos + size }, radius);
+            else canvas.DrawRect({ pos, pos + size });
+
         } else {
             Debug::QError$("bad object");
             return icon;
@@ -201,14 +224,14 @@ void Icon::ParsePath(Str src, Canvas& canvas) {
                 // PO = PQ * (0.5 ± ui), |PO| = r; => |0.5 + ui| = |O|/|PQ|, u = √(r²/|PQ|² - 0.25)
                 const fv2 PQ = isRelative ? fv2 { x, y } : (fv2 { x, y } - currPos);
                 const float u = std::sqrt(rx * rx / PQ.LenSq() - 0.25f);
-                const fv2 z = { 0.5f, (cw ^ largeArc) ? u : -u };
+                const fComplex z = { 0.5f, (cw ^ largeArc) ? u : -u };
 
                 const fv2 PO = PQ.ComplexMul(z);
-                const fv2 angle = z.ComplexMul(z);
+                const fComplex angle = z * z;
 
                 // Debug::QInfo$("arc: {} {}", largeArc, cw);
                 path->AddCircularArc(currPos + PO,
-                    Rotor2D::FromUnitVector(angle.Conj() / -z.LenSq()),
+                    Rotor2D::FromComplex(angle.Conj() / -z.LenSq()),
                     largeArc ? Canvas::MAJOR : Canvas::MINOR);
                 currPos += PQ;
                 break;
@@ -224,4 +247,20 @@ void Icon::ParsePath(Str src, Canvas& canvas) {
     }
 
     if (path) path->DontClosePath();
+}
+
+bool Icon::ParseProperties(Str& src, Out<Str&> propName, Out<Str&> propValue) {
+    if (src.StartsWith("/>")) return false;
+
+    src = src.TrimStart();
+
+    auto [name, value] = src.SplitOnce('=');
+    Debug::QAssert$(value[0] == '"', "no opening quotation mark");
+    value.Advance(1);
+    value.SplitOnce('"').TieTo(value, src);
+
+    propName = name;
+    propValue = value;
+
+    return true;
 }

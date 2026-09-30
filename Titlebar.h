@@ -2,9 +2,10 @@
 #include "UIRect.h"
 
 class Titlebar {
-    Ref<UIRect> bar, closeBtn, maximizeBtn, minimizeBtn;
+    Ref<UIRect> uRoot, uCloseBtn, uMaximizeBtn, uMinimizeBtn;
 public:
-    Titlebar(UIRect& titlebar);
+    static constexpr float HEIGHT = 40.0f;
 
+    Titlebar(UIRect& root);
     void Draw(Canvas& canvas);
 };

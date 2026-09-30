@@ -4,19 +4,21 @@
 #include "UIRect.h"
 
 class Sidebar {
-    Ref<UIRect> side;
+    Ref<UIRect> uRoot;
 
     struct Label {
         Str name;
         Icon icon;
-        Smooth<bool> vActive = false;
+        Smooth<bool> vActive = { false, Speed::FAST };
     };
     Vec<Label> labels;
 
-    Smooth<int> vSelectedIndex = 0;
-    Smooth<bool> vHasSelected = false;
+    Smooth<int> vSelectedIndex = { 0, Speed::FAST };
+    Smooth<bool> vHasSelected = { false, Speed::SLOW };
 public:
-    Sidebar(UIRect& side, Canvas& canvas);
+    static constexpr float PADDING = 5.0f, INNER_WIDTH = 48.0f;
+
+    Sidebar(UIRect& root, Canvas& canvas);
 
     void Update(float dt);
     void Draw(Canvas& canvas);

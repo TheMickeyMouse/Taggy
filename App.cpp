@@ -9,13 +9,17 @@ App::App(int w, int h)
     : gd(GraphicsDevice::Initialize({ w, h }, { .beginPosition = { 300 }, .windowTitle = "Taggy" })),
       canvas(gd), windowSize { w, h },
 
-      root(UIRect::Root({ 0, (fv2)windowSize })),
-      titlebar(root.Pack(Dir::TOP, TITLEBAR_HEIGHT * Length::PX)),
-      sidebar(root.Pack(Dir::LEFT, (48.0f + 20.0f) * Length::PX), canvas)
+      uRoot(UIRect::Root({ 0, (fv2)windowSize })),
+      uTitlebar(uRoot),
+      uPlaybar(uRoot, canvas),
+      uSidebar(uRoot, canvas),
+      uMusic(uRoot),
+
+      track(Track::Load("Resonance - Home.mp3"))
 {
 
     glfwSetWindowSizeLimits(gd.GetWindow(), 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
-    WinUtils::UseCustomTitlebar(gd.GetWindow(), TITLEBAR_HEIGHT, TITLEBAR_HEIGHT);
+    WinUtils::UseCustomTitlebar(gd.GetWindow(), Titlebar::HEIGHT, Titlebar::HEIGHT);
     canvas.FlipYDirection();
     canvas.SetFont(font = Font::LoadFile("C:/Users/User/AppData/Local/Microsoft/Windows/Fonts/JetBrainsMono-Bold.ttf", 48.0f));
 }
@@ -41,15 +45,15 @@ void App::OnScreenResize() {
     canvas.SetCanvasSize(windowSize);
 
     // ui handling
-    root.rect = { 0, (fv2)windowSize };
-    root.ComputeLayout();
+    uRoot.rect = { 0, (fv2)windowSize };
+    uRoot.ComputeLayout();
 }
 
 void App::Update() {
     if (gd.GetWindowSize() != windowSize) { // resize happened
         OnScreenResize();
     }
-    root.CheckHover(gd.GetIO().GetMousePos());
+    uRoot.CheckHover(gd.GetIO().GetMousePos());
 }
 
 bool App::Run() {
@@ -57,11 +61,10 @@ bool App::Run() {
 
     const float dt = std::min(gd.GetIO().DeltaTime(), 0.333f);
     gd.Begin();
-    // gd.ClearColor(0x272b34_rgb);
     canvas.BeginFrame();
 
     const auto& io = gd.GetIO();
-    if (io['K'].OnPress()) {
+    if (io['K'].OnPress() && io.Shift()) {
         return false;
     }
 
@@ -69,33 +72,36 @@ bool App::Run() {
     canvas.Fill(0x272b34_rgb);
     canvas.DrawRect({ 0, { Width(), Height() } });
 
-    titlebar.Draw(canvas);
-    sidebar.Draw(canvas);
+    uTitlebar.Draw(canvas);
+    uSidebar.Draw(canvas);
+    uMusic.Draw(canvas, track);
+    uPlaybar.Draw(canvas, track);
 
     debugMode ^= io["I"].OnPress() && io.Shift();
     if (debugMode) {
         canvas.StrokeWeight(5);
         canvas.Stroke(1);
-        // canvas.DrawPoint(io.GetMousePos());
         canvas.DrawText(
             Text::Format(
-                "WPos   = {}; {}x{}\n"
-                "LClick = {}\n"
-                "Mouse  = {}\n"
-                "FPS    = {}\n",
+                "WPos = {}, {}x{}; "
+                "LClick = {}; "
+                "Mouse = {}; "
+                "FPS = {};",
                 gd.GetWindowPos(), gd.GetWindowSize().x, gd.GetWindowSize().y,
                 io.LeftMouse().ClickedPos(),
                 io.GetMousePos(),
                 std::llround(io.Framerate())
             ),
-            20.0f,
-            { 0, Height() - 40 },
-            { .alignment = TextAlign::LEFT }
+            13.0f,
+            { 0, Height() },
+            { .alignment = TextAlign::LEFT | TextAlign::VBOTTOM }
         );
+
+        uRoot.DrawDebug(canvas);
     }
 
     {
-        sidebar.Update(dt);
+        uSidebar.Update(dt);
     }
 
     canvas.EndFrame();

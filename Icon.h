@@ -14,4 +14,5 @@ public:
 
     static void ParseSVGHeader(Str& src, Icon& icon, Canvas& canvas);
     static void ParsePath(Str src, Canvas& canvas);
+    static bool ParseProperties(Str& src, Out<Str&> propName, Out<Str&> propValue);
 };
