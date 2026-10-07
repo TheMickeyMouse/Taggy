@@ -11,6 +11,7 @@ public:
     fRect2D viewBox;
 
     static Icon FromSVG(Str src, Canvas& canvas);
+    static Icon FromCode(fRect2D box, Canvas& canvas, FnRef<void(Canvas& canvas)> renderer);
 
     static void ParseSVGHeader(Str& src, Icon& icon, Canvas& canvas);
     static void ParsePath(Str src, Canvas& canvas);

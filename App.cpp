@@ -13,15 +13,22 @@ App::App(int w, int h)
       uTitlebar(uRoot),
       uPlaybar(uRoot, canvas),
       uSidebar(uRoot, canvas),
-      uMusic(uRoot),
-
-      track(Track::Load("Resonance - Home.mp3"))
+      uMusic(uRoot)
 {
-
     glfwSetWindowSizeLimits(gd.GetWindow(), 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
     WinUtils::UseCustomTitlebar(gd.GetWindow(), Titlebar::HEIGHT, Titlebar::HEIGHT);
     canvas.FlipYDirection();
     canvas.SetFont(font = Font::LoadFile("C:/Users/User/AppData/Local/Microsoft/Windows/Fonts/JetBrainsMono-Bold.ttf", 48.0f));
+
+    if (const auto result = ma_engine_init(nullptr, &audioEngine); result != MA_SUCCESS) {
+        Debug::QCritical$("Couldn't initialize audio engine! err code: {}", (int)result);
+    }
+
+    Track::Load(track, "Resonance - Home.mp3", &audioEngine);
+}
+
+App::~App() {
+    ma_engine_uninit(&audioEngine);
 }
 
 const GLFWwindow* App::Window() const {
@@ -53,7 +60,8 @@ void App::Update() {
     if (gd.GetWindowSize() != windowSize) { // resize happened
         OnScreenResize();
     }
-    uRoot.CheckHover(gd.GetIO().GetMousePos());
+    const auto& io = gd.GetIO();
+    uRoot.CheckMouseStates(io.GetMousePos(), io.LeftMouse().Pressed(), io.LeftMouse().OnPress());
 }
 
 bool App::Run() {
@@ -75,7 +83,7 @@ bool App::Run() {
     uTitlebar.Draw(canvas);
     uSidebar.Draw(canvas);
     uMusic.Draw(canvas, track);
-    uPlaybar.Draw(canvas, track);
+    uPlaybar.Draw(canvas, track, io);
 
     debugMode ^= io["I"].OnPress() && io.Shift();
     if (debugMode) {
@@ -86,18 +94,24 @@ bool App::Run() {
                 "WPos = {}, {}x{}; "
                 "LClick = {}; "
                 "Mouse = {}; "
-                "FPS = {};",
+                "FPS = {}; "
+                "MouseDown = {}",
                 gd.GetWindowPos(), gd.GetWindowSize().x, gd.GetWindowSize().y,
                 io.LeftMouse().ClickedPos(),
                 io.GetMousePos(),
-                std::llround(io.Framerate())
+                std::llround(io.Framerate()),
+                io.LeftMouse().Pressed()
             ),
-            13.0f,
+            11.0f,
             { 0, Height() },
             { .alignment = TextAlign::LEFT | TextAlign::VBOTTOM }
         );
 
         uRoot.DrawDebug(canvas);
+    }
+
+    if (io[IO::Key::SPACE].OnPress()) {
+        track.Toggle();
     }
 
     {
@@ -108,4 +122,8 @@ bool App::Run() {
     gd.End();
 
     return gd.WindowIsOpen();
+}
+
+String App::FormatSeconds(int seconds) {
+    return Text::Format("{}:{:02}", seconds / 60, seconds % 60);
 }

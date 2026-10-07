@@ -9,10 +9,15 @@ using namespace Graphics;
 enum class Dir { TOP, RIGHT, BTM, LEFT };
 namespace Dirs {
     Dir Opposite(Dir side);
+    Dir Cross(Dir side);
+
     bool IsMin(Dir side);
     bool IsX(Dir side);
+    bool IsY(Dir side);
+
     float& GetBound(fRect2D& r, Dir side);
     float GetSideLen(const fRect2D& r, Dir side);
+
     fRect2D Cut(fRect2D& r, Dir side, float len);
 }
 
@@ -62,28 +67,45 @@ static const fColor
     RED            = 0xc51f1f_rgbf,
     ACCENT         = 0x61afef_rgbf;
 
+struct UIRectOptions {
+    Sides padding = 0;
+    Sides margin = 0;
+    bool centerX = false, centerY = false;
+};
+
 class UIRect {
 public:
     Dir side;
     Length length;
     Sides padding, margin;
-    bool centerChildren = false;
+    bool centerChildrenX = false, centerChildrenY = false;
     Vec<Box<UIRect>> children;
 
     // computed
     fRect2D rect;
-    bool isHovered = false, isChildrenHovered = false;
+
+    // io states
+    bool isHovered = false,
+         isChildrenHovered = false,
+         isMousePressed = false,
+         isChildrenMousePressed = false,
+         onClick = false,
+         onChildrenClick = false;
+    fv2 clickPos;
 
     static UIRect Root(const fRect2D& root);
     void ComputeLayout();
-    bool CheckHover(const fv2& mouse);
-    void SetUnhovered();
+
+    bool CheckMouseStates(const fv2& mouse, bool pressed, bool clicked);
+    void ClearMouseStates(const fv2& mouse, bool pressed);
 
     bool DrawDebug(Canvas& canvas) const;
 
     fRect2D GetInnerRect() const;
 
-    UIRect& Pack(Dir childSide, Length childLen, Sides pad = 0, Sides marg = 0, bool center = false);
+    fv2 RelativePos(const fv2& p) const;
+
+    UIRect& Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
 
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {

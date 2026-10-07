@@ -298,7 +298,7 @@ namespace ID3v2 {
         u16 samplingRate, bitrateKbps;
         u8 channels;
 
-        u32 size;
+        u32 size, mpegBegin;
         Vec<Tag> tags;
         Vec<Field> tagFields;
     };
@@ -335,7 +335,7 @@ public:
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
     bool ReadV2TagHeader(Out<ID3v2::Tag&> tag);
     bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload);
-    static bool ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<OptRef<u32>> firstPosition = nullptr);
+    static bool ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&> firstPosition);
 
     ArrayBox<byte> ReadTagPayload(u32 size);
     static bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead);

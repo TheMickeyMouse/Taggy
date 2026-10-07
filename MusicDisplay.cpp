@@ -5,8 +5,8 @@
 #include "Utils/Iter/Zip.h"
 
 MusicDisplay::MusicDisplay(UIRect& root)
-     : uRoot(root.Pack(Dir::RIGHT, WIDTH * Length::PX, PADDING)),
-       uCover (uRoot->Pack(Dir::TOP, 1.0_fw, 0, {{ .btm = PADDING / 2 }})),
+     : uRoot(root.Pack(Dir::RIGHT, WIDTH * Length::PX, { .padding = PADDING })),
+       uCover (uRoot->Pack(Dir::TOP, 1.0_fw, { .margin = {{ .btm = PADDING / 2 }} })),
        uTitle (uRoot->Pack(Dir::TOP, TITLE_HEIGHT * Length::PX)),
        uArtist(uRoot->Pack(Dir::TOP, ARTIST_HEIGHT * Length::PX))
 {}

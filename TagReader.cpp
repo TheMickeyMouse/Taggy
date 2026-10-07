@@ -783,7 +783,7 @@ bool TagReader::ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload) {
     }
 }
 
-bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<OptRef<u32>> firstPosition) {
+bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&> firstPosition) {
     static constexpr usize READ_BATCH_SIZE = 8192;
     byte buffer[READ_BATCH_SIZE];
 
@@ -806,8 +806,7 @@ bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<OptR
     }
     foundHeader:
     const u32 pos = (isize)file.tellg() - READ_BATCH_SIZE + i;
-    if (firstPosition)
-        *firstPosition = pos;
+    firstPosition = pos;
 
     // AAAAAAAA AAABBCCD EEEEFFGH IIJJKLMM
     constexpr u32 VERSION_MASK  = 0x00'18'00'00, // B
@@ -976,7 +975,7 @@ Option<ID3v2::Metadata> TagReader::ReadV2() {
         readSize += sizeof(FrameHeader) + tag.size;
     }
 
-    ReadMpegData(file, meta);
+    ReadMpegData(file, meta, meta.mpegBegin);
 
     return meta;
 }

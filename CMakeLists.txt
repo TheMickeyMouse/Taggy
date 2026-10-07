@@ -28,5 +28,7 @@ add_executable(Taggy main.cpp
         Playbar.cpp
         Playbar.h
         Track.cpp
-        Track.h)
+        Track.h
+        miniaudio.h
+        miniaudio.cpp)
 target_link_libraries(Taggy Quasi dwmapi.dll)

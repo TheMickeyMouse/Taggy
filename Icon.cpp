@@ -1,16 +1,11 @@
 #include "Icon.h"
 
 Icon Icon::FromSVG(Str src, Canvas& canvas) {
-    // static constexpr float UPSCALE_FACTOR = 3.0f;
-
     Icon icon;
     [[maybe_unused]] const auto _ = canvas.RenderTo(icon.mesh);
     [[maybe_unused]] const auto _2 = canvas.PushStyles();
-    // [[maybe_unused]] const auto _3 = canvas.PushTransform();
 
-    // canvas.transform.scale = UPSCALE_FACTOR;
-
-    canvas.NoFill();
+    canvas.Fill(1);
     canvas.Stroke(1);
 
     ParseSVGHeader(src, icon, canvas);
@@ -76,6 +71,19 @@ Icon Icon::FromSVG(Str src, Canvas& canvas) {
     return icon;
 }
 
+Icon Icon::FromCode(fRect2D box, Canvas& canvas, FnRef<void(Canvas& canvas)> renderer) {
+    Icon icon;
+    icon.viewBox = box;
+    [[maybe_unused]] const auto _  = canvas.RenderTo(icon.mesh);
+    [[maybe_unused]] const auto _2 = canvas.PushStyles();
+
+    canvas.Stroke(1);
+
+    renderer(canvas);
+
+    return icon;
+}
+
 void Icon::ParseSVGHeader(Str& src, Icon& icon, Canvas& canvas) {
     src = src.Trim();
     Debug::QAssert$(src.StartsWith("<svg"), "bad svg header! src: {}", src);
@@ -90,8 +98,7 @@ void Icon::ParseSVGHeader(Str& src, Icon& icon, Canvas& canvas) {
         value.SplitOnce('"').TieTo(value, src);
 
         if (propName == "xmlns") Debug::QAssert$(value == "http://www.w3.org/2000/svg", "bad xmlns");
-        else if (propName == "width" || propName == "height" ||
-                 propName == "fill" || propName == "stroke" || propName == "class") continue; // we dont need this lol
+        else if (propName == "width" || propName == "height" || propName == "stroke" || propName == "class") continue; // we dont need this lol
         else if (propName == "viewBox") {
             iv2 min, size;
             // temporary solution; easy and simple :)
@@ -109,6 +116,8 @@ void Icon::ParseSVGHeader(Str& src, Icon& icon, Canvas& canvas) {
             else if (value == "bevel") canvas.StrokeCap(UIRender::BEVEL_JOIN);
             else if (value == "miter") canvas.StrokeCap(UIRender::MITER_JOIN);
             else Debug::QError$("bad stroke join value '{}'", value);
+        } else if (propName == "fill" && value == "none") {
+            canvas.NoFill();
         } else {
             Debug::QWarn$("skipping property {}", propName);
         }

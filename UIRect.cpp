@@ -23,12 +23,25 @@ Dir Dirs::Opposite(Dir side) {
     return (Dir)-1;
 }
 
+Dir Dirs::Cross(Dir side) {
+    switch (side) {
+        case Dir::TOP:   case Dir::BTM:  return Dir::LEFT;
+        case Dir::RIGHT: case Dir::LEFT: return Dir::TOP;
+    }
+    Debug::QError$("bad side {}; how", (int)side);
+    return (Dir)-1;
+}
+
 bool Dirs::IsMin(Dir side) {
     return side == Dir::TOP || side == Dir::RIGHT;
 }
 
 bool Dirs::IsX(Dir side) {
     return side == Dir::LEFT || side == Dir::RIGHT;
+}
+
+bool Dirs::IsY(Dir side) {
+    return side == Dir::TOP || side == Dir::BTM;
 }
 
 float Dirs::GetSideLen(const fRect2D& r, Dir side) {
@@ -57,7 +70,7 @@ float Length::Resolve(const UIRect& parent, Dir side) const {
     if (unit == FW || (unit == PER && Dirs::IsX(side))) {
         return val * (parent.rect.Width() - parent.padding.GetX());
     }
-    if (unit == FH || (unit == PER && !Dirs::IsX(side))) {
+    if (unit == FH || (unit == PER && Dirs::IsY(side))) {
         return val * (parent.rect.Height() - parent.padding.GetY());
     }
     Debug::QError$("bad unit {}; how", (int)unit);
@@ -110,11 +123,15 @@ void UIRect::ComputeLayout() {
         child->rect = child->margin.Shrink(Dirs::Cut(remainingSpace, child->side, len + marginExtra));
     }
 
-    if (centerChildren && children) {
-        const bool useXaxis = Dirs::IsX(children[0]->side);
-        const fv2 offset = useXaxis ? fv2 { remainingSpace.Width() / 2, 0 } : fv2 { 0, remainingSpace.Height() / 2 };
+    if ((centerChildrenX || centerChildrenY) && children) {
+        const fv2 offset = {
+            centerChildrenX ? remainingSpace.Width() / 2 : 0,
+            centerChildrenY ? remainingSpace.Height() / 2 : 0,
+        };
         for (auto& child : children) {
-            child->rect = child->rect.Move(offset);
+            if ((centerChildrenX && Dirs::IsX(child->side)) || (centerChildrenY && Dirs::IsY(child->side))) {
+                child->rect = child->rect.Move(offset);
+            }
         }
     }
 
@@ -123,26 +140,47 @@ void UIRect::ComputeLayout() {
     }
 }
 
-bool UIRect::CheckHover(const fv2& mouse) {
+bool UIRect::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked) {
     isHovered = rect.Contains(mouse);
     if (!isHovered) {
-        SetUnhovered();
+        ClearMouseStates(mouse, pressed);
         return false; // the children won't be hovered anyways
     }
 
-    isChildrenHovered = false;
+    onClick = clicked;
+    isMousePressed = isMousePressed ? pressed : clicked;
+    if (pressed) clickPos = mouse - rect.BottomLeft();
+
+    isChildrenHovered = isChildrenMousePressed = onChildrenClick = false;
     for (auto& child : children) {
-        isChildrenHovered |= child->CheckHover(mouse);
+        isChildrenHovered |= child->CheckMouseStates(mouse, pressed, clicked);
+        isChildrenMousePressed |= child->isMousePressed;
+        onChildrenClick |= child->onChildrenClick;
     }
+
     return true;
 }
 
-void UIRect::SetUnhovered() {
-    isHovered = false;
+void UIRect::ClearMouseStates(const fv2& mouse, bool pressed) {
+    isHovered = onClick = onChildrenClick = false;
+
+    // we should keep the ui element 'pressed' even if the mouse leaves the hitbox
+    if (isMousePressed && !isChildrenMousePressed) {
+        // keep updating press state & mouse position
+        isMousePressed = pressed;
+        clickPos = mouse - rect.BottomLeft();
+    } else if (isChildrenMousePressed) {
+        goto clearChildren;
+    } else {
+        isMousePressed = false;
+    }
+
     if (isChildrenHovered) {
+        clearChildren:
+
         isChildrenHovered = false;
         for (auto& child : children) {
-            child->SetUnhovered();
+            child->ClearMouseStates(mouse, pressed);
         }
     }
 }
@@ -158,11 +196,17 @@ bool UIRect::DrawDebug(Canvas& canvas) const {
         static const fColor
             DBG_MARGIN_COLOR  = 0xecc74b_rgb,
             DBG_PADDING_COLOR = 0xa9e75f_rgb,
-            DBG_CENTER_COLOR  = 0x51abf530_rgba;
+            DBG_CENTER_COLOR  = 0x51abf5_rgb,
+            DBG_CENTER_PRESSED_COLOR = 0xc678dd_rgb;
         static constexpr float DBG_FNT_SIZE = 12.0f;
 
         canvas.NoStroke();
-        canvas.Fill(DBG_CENTER_COLOR);
+
+        if (isMousePressed) {
+            canvas.Fill(DBG_CENTER_PRESSED_COLOR.AddAlpha(onClick ? 0.4f : 0.2f));
+        } else {
+            canvas.Fill(DBG_CENTER_COLOR.AddAlpha(0.2f));
+        }
         const fRect2D center = padding.Shrink(rect);
         canvas.DrawRect(center);
 
@@ -178,12 +222,6 @@ bool UIRect::DrawDebug(Canvas& canvas) const {
         canvas.DrawText(
             Text::Format("{}x{}", center.Width(), center.Height()),
             DBG_FNT_SIZE, center.BottomLeft(), { TextAlign::LEFT | TextAlign::VBOTTOM });
-        // canvas.DrawText(
-        //     Text::Format("{}; {}; {}; {}", padding.top, padding.right, padding.btm, padding.left),
-        //     DBG_FNT_SIZE, rect.BottomLeft(), { TextAlign::LEFT | TextAlign::VBOTTOM });
-        // canvas.DrawText(
-        //     Text::Format("{}; {}; {}; {}", margin.top, margin.right, margin.btm, margin.left),
-        //     DBG_FNT_SIZE, rect.BottomRight() + fv2 { margin.right, -margin.top }, { TextAlign::RIGHT | TextAlign::VBOTTOM });
     }
     return true;
 }
@@ -192,6 +230,14 @@ fRect2D UIRect::GetInnerRect() const {
     return padding.Shrink(rect);
 }
 
-UIRect& UIRect::Pack(Dir childSide, Length childLen, Sides pad, Sides marg, bool center) {
-    return *children.Push(Box<UIRect>::New({ childSide, childLen, pad, marg, center }));
+fv2 UIRect::RelativePos(const fv2& p) const {
+    return p - rect.BottomLeft();
+}
+
+UIRect& UIRect::Pack(Dir childSide, Length childLen, const UIRectOptions& options) {
+    return *children.Push(Box<UIRect>::New({
+        childSide,
+        childLen,
+        options.padding, options.margin, options.centerX, options.centerY
+    }));
 }

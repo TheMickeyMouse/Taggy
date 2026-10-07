@@ -7,6 +7,7 @@
 #include "Track.h"
 #include "UIRect.h"
 #include "GUI/Canvas.h"
+#include "miniaudio.h"
 
 using namespace Quasi;
 using namespace Graphics;
@@ -27,8 +28,11 @@ class App {
     MusicDisplay uMusic;
 
     Track track;
+
+    ma_engine audioEngine;
 public:
     App(int w, int h);
+    ~App();
 
     const GLFWwindow* Window() const;
     GLFWwindow* Window();
@@ -38,4 +42,6 @@ public:
     void OnScreenResize();
     void Update();
     bool Run();
+
+    static String FormatSeconds(int seconds);
 };
