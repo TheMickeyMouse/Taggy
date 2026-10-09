@@ -2,7 +2,6 @@
 
 #include "TagReader.h"
 #include "Track.h"
-#include "Utils/Iter/Zip.h"
 
 MusicDisplay::MusicDisplay(UIRect& root)
      : uRoot(root.Pack(Dir::RIGHT, WIDTH * Length::PX, { .padding = PADDING })),

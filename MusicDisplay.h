@@ -4,7 +4,7 @@
 struct Track;
 
 class MusicDisplay {
-    Ref<UIRect> uRoot, uCover, uTitle, uArtist;
+    UIRef uRoot, uCover, uTitle, uArtist;
 public:
     static constexpr float
         WIDTH = 350.0f,

@@ -9,9 +9,9 @@ namespace Quasi::IO {
 struct Track;
 
 class Playbar {
-    Ref<UIRect> uRoot, uCover, uInfo, uControlsExtra, uControls;
-    Ref<UIRect> uInfoTitle, uInfoArtist;
-    Ref<UIRect> uDurationBar, uPrevBtn, uPlayBtn, uNextBtn;
+    UIRef uRoot, uCover, uInfo, uControlsExtra, uControls;
+    UIRef uInfoTitle, uInfoArtist;
+    UIRef uDurationBar, uPrevBtn, uPlayBtn, uNextBtn;
 
     Icon vPlay, vPause, vNext, vPrev;
     Option<float> requestedMusicSeek = nullptr;

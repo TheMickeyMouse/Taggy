@@ -20,7 +20,7 @@ void Titlebar::Draw(Canvas& canvas) {
         [[maybe_unused]] const auto _2 = btn->BeginDraw(canvas);
         canvas.transform.scale = btn->rect.Width();
 
-        canvas.Fill(btn->isHovered ? (btn.RefEquals(uCloseBtn) ? RED : DARK_GRAY) : BACKGROUND);
+        canvas.Fill(btn->isHovered ? (btn == uCloseBtn ? RED : DARK_GRAY) : BACKGROUND);
         if (btn->isHovered) {
             canvas.NoStroke();
             canvas.DrawRect({ 0, 1 });
@@ -29,11 +29,11 @@ void Titlebar::Draw(Canvas& canvas) {
         canvas.Stroke(LIGHT_GRAY);
         canvas.StrokeWeight(0.5f / canvas.transform.scale.x);
 
-        if (btn.RefEquals(uCloseBtn)) { // x icon (close)
+        if (btn == uCloseBtn) { // x icon (close)
             if (btn->isHovered) canvas.Stroke(1);
             canvas.DrawLine(0.4, 0.6);
             canvas.DrawLine({ 0.6, 0.4 }, { 0.4, 0.6 });
-        } else if (btn.RefEquals(uMaximizeBtn)) { // double square icon (maximize)
+        } else if (btn == uMaximizeBtn) { // double square icon (maximize)
             canvas.StrokeJoin(UIRender::MITER_JOIN);
             if (glfwGetWindowAttrib(GraphicsDevice::GetMainWindow(), GLFW_MAXIMIZED)) {
                 canvas.DrawRect({ { 0.43, 0.4 }, { 0.6, 0.57 } });

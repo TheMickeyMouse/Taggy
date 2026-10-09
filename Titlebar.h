@@ -2,7 +2,7 @@
 #include "UIRect.h"
 
 class Titlebar {
-    Ref<UIRect> uRoot, uCloseBtn, uMaximizeBtn, uMinimizeBtn;
+    UIRef uRoot, uCloseBtn, uMaximizeBtn, uMinimizeBtn;
 public:
     static constexpr float HEIGHT = 40.0f;
 

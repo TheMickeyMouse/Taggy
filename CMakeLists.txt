@@ -4,6 +4,8 @@ project(Taggy)
 set(CMAKE_CXX_STANDARD 20)
 
 add_subdirectory(Quasi)
+target_compile_definitions(Quasi PUBLIC Q_NO_IMGUI)
+
 add_executable(Taggy main.cpp
         TagReader.cpp
         TagReader.h

@@ -16,12 +16,13 @@ using namespace Math;
 class App {
     GraphicsDevice gd;
     Canvas canvas;
-    Font font;
     iv2 windowSize;
+    Font font, fontBold;
+
     bool debugMode = false;
 
     // ui stuff
-    UIRect uRoot;
+    UIDoc uDoc;
     Titlebar uTitlebar;
     Playbar uPlaybar;
     Sidebar uSidebar;
@@ -42,6 +43,8 @@ public:
     void OnScreenResize();
     void Update();
     bool Run();
+
+    bool IsWindowMinimized() const;
 
     static String FormatSeconds(int seconds);
 };

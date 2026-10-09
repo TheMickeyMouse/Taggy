@@ -48,19 +48,18 @@ void Sidebar::Draw(Canvas& canvas) {
     canvas.NoFill();
     canvas.Stroke(LIGHT_GRAY);
 
-    for (int i = 0; i < labels.Length(); ++i) {
-        auto& u = uRoot->children[i];
+    for (const auto [i, u] : Iter::Enumerate(uRoot->Children())) {
         auto& [name, icon, vActive] = labels[i];
 
         // experimental:
         // u->length = (1.0f + 0.5f * vActive.displayValue) * Length::FW;
 
-        [[maybe_unused]] const auto _2 = u->BeginDraw(canvas);
+        [[maybe_unused]] const auto _2 = u.BeginDraw(canvas);
 
-        const float y = u->rect.Height() / 2.0f, h = y * (2.0f + 0.4f * vActive.displayValue);
+        const float y = u.rect.Height() / 2.0f, h = y * (2.0f + 0.4f * vActive.displayValue);
 
-        vActive.Set(u->isHovered);
-        if (u->isHovered) {
+        vActive.Set(u.isHovered);
+        if (u.isHovered) {
             vSelectedIndex.Set(i);
             if (!vHasSelected.target) vSelectedIndex.Jump();
         }

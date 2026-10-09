@@ -6,7 +6,7 @@ using namespace Quasi;
 using namespace Math;
 using namespace Graphics;
 
-enum class Dir { TOP, RIGHT, BTM, LEFT };
+enum class Dir : u8 { TOP, RIGHT, BTM, LEFT };
 namespace Dirs {
     Dir Opposite(Dir side);
     Dir Cross(Dir side);
@@ -73,45 +73,106 @@ struct UIRectOptions {
     bool centerX = false, centerY = false;
 };
 
+class UIDoc;
+struct UISiblingIter;
+
+struct UIRef {
+    u32 i;
+
+    operator UIRect&();
+    operator const UIRect&() const;
+    UIRect& operator*();
+    const UIRect& operator*() const;
+    UIRect* operator->();
+    const UIRect* operator->() const;
+
+    bool operator==(const UIRef& other) const = default;
+};
+
 class UIRect {
 public:
-    Dir side;
     Length length;
     Sides padding, margin;
-    bool centerChildrenX = false, centerChildrenY = false;
-    Vec<Box<UIRect>> children;
-
     // computed
     fRect2D rect;
 
+    Dir side;
+    bool centerChildrenX = false, centerChildrenY = false;
     // io states
-    bool isHovered = false,
-         isChildrenHovered = false,
-         isMousePressed = false,
-         isChildrenMousePressed = false,
-         onClick = false,
-         onChildrenClick = false;
+    bool isHovered              : 1 = false,
+         isChildrenHovered      : 1 = false,
+         isMousePressed         : 1 = false,
+         isChildrenMousePressed : 1 = false,
+         onClick                : 1 = false,
+         onChildrenClick        : 1 = false;
     fv2 clickPos;
 
-    static UIRect Root(const fRect2D& root);
-    void ComputeLayout();
+    enum : u32 { EMPTY = ~(u32)0 };
+    u32 siblingID = EMPTY, childID = EMPTY; // linked list/tree like scheme
+
+    static UIRect Root(const fRect2D& root, UIDoc& doc);
+    OptRef<UIRect> Sibling();
+    OptRef<UIRect> Child();
+
+    bool HasSiblings() const;
+    bool HasChildren() const;
+
+    UISiblingIter Siblings();
+    UISiblingIter Children();
+
+    void DrawDebug(Canvas& canvas);
 
     bool CheckMouseStates(const fv2& mouse, bool pressed, bool clicked);
     void ClearMouseStates(const fv2& mouse, bool pressed);
-
-    bool DrawDebug(Canvas& canvas) const;
 
     fRect2D GetInnerRect() const;
 
     fv2 RelativePos(const fv2& p) const;
 
-    UIRect& Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
+    UIRef Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
 
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {
-        auto raii = Tuple { c.PushTransform(), c.PushStyles() };
+        auto t = c.PushTransform();
         c.transform.pos = rect.BottomLeft();
-        return raii;
+        return t;
     }
 };
 
+struct UISiblingIter : IIterator<UIRect&, UISiblingIter> {
+    using Item = UIRect&;
+    OptRef<UIRect> current;
+
+    UISiblingIter(UIRect& begin) : current(begin) {}
+
+    UIRect& CurrentImpl() const;
+    void AdvanceImpl();
+    bool CanNextImpl() const;
+};
+
+class UIDoc {
+public:
+    Vec<UIRect> elements; // first is always root
+    u32 hovered = NONE, active = NONE; // the element being held
+
+    UIDoc(const fRect2D& root);
+private:
+    UIRect& operator[](u32 i);
+public:
+    UIRect& Root();
+
+    u32 GetIDFor(const UIRect& u) const;
+    UIRef Add(const UIRect& u);
+    UIRef AddChild(u32 i, const UIRect& child);
+
+    void SetRect(const fRect2D& rect);
+
+    void ComputeLayout();
+    void CheckMouseStates(const fv2& mouse, bool pressed, bool clicked);
+    void DrawDebug(Canvas& canvas);
+
+    inline static OptRef<UIDoc> Instance = nullptr;
+
+    friend UIRect;
+    friend UIRef;
+};

@@ -84,9 +84,9 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
 
     QWith$(uControls->BeginDraw(canvas)) {
         Icon* icons[] = { &vPrev, track.isPlaying ? &vPause : &vPlay, &vNext };
-        for (int i = 1; i < uControls->children.Length(); ++i) QWith$(uControls->children[i]->BeginDraw(canvas)) {
-            const auto& child = uControls->children[i];
-            const fv2 s = child->GetInnerRect().Size(),
+        for (const auto [i, child] : Iter::Enumerate(uControls->Children())) QWith$(child.BeginDraw(canvas)) {
+            if (i == 0) continue;
+            const fv2 s = child.GetInnerRect().Size(),
                       h = s.y / icons[i - 1]->viewBox.Size();
 
             const bool isPlayBtn = i == 2;
@@ -95,7 +95,7 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
                 canvas.Fill(WHITE);
                 canvas.DrawCircle(s * 0.5f, s.y * 0.7f);
             }
-            canvas.DrawMesh(icons[i - 1]->mesh, { (s.x - s.y) / 2, child->padding.top }, h, isPlayBtn ? BACKGROUND : WHITE);
+            canvas.DrawMesh(icons[i - 1]->mesh, { (s.x - s.y) / 2, child.padding.top }, h, isPlayBtn ? BACKGROUND : WHITE);
         }
 
         if (uPlayBtn->onClick) {

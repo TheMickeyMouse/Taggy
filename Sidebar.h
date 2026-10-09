@@ -4,7 +4,7 @@
 #include "UIRect.h"
 
 class Sidebar {
-    Ref<UIRect> uRoot;
+    UIRef uRoot;
 
     struct Label {
         Str name;
