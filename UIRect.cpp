@@ -294,11 +294,52 @@ UIRef UIRect::Pack(Dir childSide, Length childLen, const UIRectOptions& options)
 
 void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) {
     [[maybe_unused]] const auto _ = c.PushTransform();
+    [[maybe_unused]] const auto _2 = c.PushStyles();
     c.transform.pos = 0;
 
     const fv2 size = rect.Size();
     c.Stroke(color);
-    c.SetFont(bold ? App::GetFontBold() : App::GetFont());
+    const Font& font = bold ? App::GetFontBold() : App::GetFont();
+    c.SetFont(font);
+
+    // ellipsis rendering
+    const auto& pointMetric = font.GetGlyphRect('.');
+    const float relativeSize      = size.y * 64.0f / (float)font.FontSize(),
+                pointSize         = pointMetric.advance.x,
+                maxLength         = size.x / relativeSize,
+                preEllipsesLength = maxLength - pointSize;
+    float len = 0.0f, preLen;
+    usize i = 0;
+    for (; i < text.Length(); ++i) {
+        const float w = font.CalcCharWidth(text[i]);
+        if (len + w > preEllipsesLength) goto renderEllipses;
+        len += w;
+    }
+    goto normalRender;
+
+    renderEllipses:
+    preLen = len - (i - text.First(i).TrimEnd().Length()) * pointSize;
+    for (usize j = i; j < text.Length(); ++j) {
+        if (len > maxLength) { // actually render ellipses
+            c.DrawText(text.First(i), size.y, rect.BottomLeft(), { align, size });
+
+            // normal "..." takes up too much space; fake it instead
+            const float r = font.CalcCharWidth('.') * relativeSize / 8.0f;
+            fv2 p = rect.BottomLeft();
+            p.x += preLen * relativeSize + 1.5f * r;
+            p.y -= 0.5f * (size.y - (font.GetMetric().fontHeight) * relativeSize / 64.0f) + r * 1.5f;
+            p.y += (font.GetMetric().ascend / 64.0f - pointMetric.offset.y) * relativeSize;
+
+            c.StrokeWeight(r * 0.75f);
+            c.DrawPoint(p); p.x += 2.5f * r;
+            c.DrawPoint(p); p.x += 2.5f * r;
+            c.DrawPoint(p);
+            return;
+        }
+        len += font.CalcCharWidth(text[j]);
+    }
+
+    normalRender:
     c.DrawText(text, size.y, rect.BottomLeft(), { align, size });
 }
 

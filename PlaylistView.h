@@ -7,6 +7,8 @@ public:
     UIRef uRoot, uCover, uInfo;
     UIRef uInfoTitle, uInfoArtist;
 
+    static constexpr float PADDING = 10;
+
     SongView() = default;
     SongView(UIRect& root);
 

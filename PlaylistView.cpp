@@ -3,11 +3,11 @@
 #include "App.h"
 
 SongView::SongView(UIRect& root)
-    : uRoot(root.Pack(Dir::TOP, 80.0_px, { .padding = 10, .margin = {{ .btm = 5 }} })),
-      uCover(uRoot->Pack(Dir::LEFT, 1.0_fh, { .margin = {{ .right = 5 }} })),
-      uInfo (uRoot->Pack(Dir::LEFT, 0.4_per, { .centerY = true })),
-      uInfoTitle (uInfo->Pack(Dir::TOP, 0.4_per)),
-      uInfoArtist(uInfo->Pack(Dir::TOP, 0.4_per))
+    : uRoot(root.Pack(Dir::TOP, 80.0_px, { .padding = PADDING, .margin = {{ .btm = PADDING / 2 }} })),
+      uCover(uRoot->Pack(Dir::LEFT, 1.0_fh, { .margin = {{ .right = PADDING }} })),
+      uInfo (uRoot->Pack(Dir::LEFT, 0.45_per, { .centerY = true })),
+      uInfoTitle (uInfo->Pack(Dir::TOP, 0.3_per, { .margin = {{ .btm = PADDING / 2 }} })),
+      uInfoArtist(uInfo->Pack(Dir::TOP, 0.24_per))
 {}
 
 void SongView::Draw(Canvas& canvas, Track& track) {

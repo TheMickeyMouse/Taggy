@@ -38,7 +38,6 @@ public:
 
 struct Track {
     Path filePath;
-    std::ifstream file;
     u32 audioBeginPos;
 
     Texture2D cover;
@@ -56,6 +55,7 @@ struct Track {
     static bool Load(Out<Track&> track, Path filename, bool lazyLoad);
 
     void LoadSoundIntoMemory();
+    void LoadSoundIntoMemory(std::ifstream& file);
 
     void Start();
     void Stop();

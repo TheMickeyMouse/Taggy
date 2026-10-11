@@ -86,16 +86,22 @@ bool Track::Load(Out<Track&> track, Path filename, bool lazyLoad) {
     }
 
     track.audioBeginPos = metadata->mpegBegin;
-    track.file = std::move(reader.file);
 
-    if (!lazyLoad) track.LoadSoundIntoMemory();
+    if (!lazyLoad) track.LoadSoundIntoMemory(reader.file);
     return true;
 }
 
 void Track::LoadSoundIntoMemory() {
     if (sound) return;
+    std::ifstream file { filePath };
+    LoadSoundIntoMemory(file);
+}
 
+void Track::LoadSoundIntoMemory(std::ifstream& file) {
+    if (sound) return;
     {
+        [[maybe_unused]] Debug::Timer timer { "load audio to mem", Debug::Logger::InternalLog };
+
         file.seekg(0, std::ios::end);
         isize len = file.tellg();
         file.seekg(audioBeginPos, std::ios::beg);
@@ -103,6 +109,9 @@ void Track::LoadSoundIntoMemory() {
 
         sound = Sound::Allocate(len);
         file.read((char*)sound.GetAudioBytes().Data(), len);
+
+        timer.Stop();
+        Debug::QDebug$("reading {}kB... ({} GB/s)", len / 1024, len / 1024.0f / timer.ElapsedMicros());
     }
 
     const Bytes trackAudioBytes = sound.GetAudioBytes();
