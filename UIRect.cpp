@@ -1,4 +1,6 @@
 #include "UIRect.h"
+
+#include "App.h"
 #include "Utils/Debug/Logger.h"
 
 float& Dirs::GetBound(fRect2D& r, Dir side) {
@@ -65,7 +67,7 @@ fRect2D Dirs::Cut(fRect2D& r, Dir side, float len) {
     return slice;
 }
 
-float Length::Resolve(const UIRect& parent, Dir side) const {
+float Length::ResolveSingle(const UIRect& parent, const fRect2D& remaining, Dir side, float val, Unit unit) {
     if (unit == PX) return val;
     if (unit == FW || (unit == PER && Dirs::IsX(side))) {
         return val * (parent.rect.Width() - parent.padding.GetX());
@@ -73,8 +75,37 @@ float Length::Resolve(const UIRect& parent, Dir side) const {
     if (unit == FH || (unit == PER && Dirs::IsY(side))) {
         return val * (parent.rect.Height() - parent.padding.GetY());
     }
+    if (unit == RPER) {
+        return Dirs::IsX(side) ? remaining.Size().x : remaining.Size().y;
+    }
     Debug::QError$("bad unit {}; how", (int)unit);
     return 0;
+}
+
+float Length::Resolve(const UIRect& parent, const fRect2D& remaining, Dir side) const {
+    switch (op) {
+        case NONE: return ResolveSingle(parent, remaining, side, val, unit);
+        case MIN:  return std::min(ResolveSingle(parent, remaining, side, val, unit), ResolveSingle(parent, remaining, side, val2, unit2));
+        case MAX:  return std::max(ResolveSingle(parent, remaining, side, val, unit), ResolveSingle(parent, remaining, side, val2, unit2));
+    }
+    Debug::QError$("bad op {}; how", (int)op);
+    return 0;
+}
+
+Length Length::Min(const Length& a, const Length& b) {
+    return {
+        a.val, a.unit,
+        b.val, b.unit,
+        MIN
+    };
+}
+
+Length Length::Max(const Length& a, const Length& b) {
+    return {
+        a.val, a.unit,
+        b.val, b.unit,
+        MAX
+    };
 }
 
 float Sides::GetSide(Dir d) const {
@@ -261,6 +292,16 @@ UIRef UIRect::Pack(Dir childSide, Length childLen, const UIRectOptions& options)
     });
 }
 
+void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) {
+    [[maybe_unused]] const auto _ = c.PushTransform();
+    c.transform.pos = 0;
+
+    const fv2 size = rect.Size();
+    c.Stroke(color);
+    c.SetFont(bold ? App::GetFontBold() : App::GetFont());
+    c.DrawText(text, size.y, rect.BottomLeft(), { align, size });
+}
+
 UIRect& UISiblingIter::CurrentImpl() const {
     return (UIRect&)*current;
 }
@@ -329,7 +370,7 @@ void UIDoc::ComputeLayout() {
         for (u32 i = curr.childID; i != UIRect::EMPTY; i = elements[i].siblingID) {
             UIRect& child = elements[i];
             // calc the length in the direction of the axis `child.side`
-            const float len = child.length.Resolve(curr, child.side);
+            const float len = child.length.Resolve(curr, remainingSpace, child.side);
             const float marginExtra = child.margin.GetSide(Dirs::Opposite(child.side));
             // partition `remainingSpace`
             child.rect = child.margin.Shrink(Dirs::Cut(remainingSpace, child.side, len + marginExtra));

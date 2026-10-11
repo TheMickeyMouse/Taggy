@@ -4,10 +4,8 @@
 #include "Playbar.h"
 #include "Sidebar.h"
 #include "Titlebar.h"
-#include "Track.h"
-#include "UIRect.h"
-#include "GUI/Canvas.h"
-#include "miniaudio.h"
+#include "Playlist.h"
+#include "PlaylistView.h"
 
 using namespace Quasi;
 using namespace Graphics;
@@ -27,8 +25,10 @@ class App {
     Playbar uPlaybar;
     Sidebar uSidebar;
     MusicDisplay uMusic;
+    PlaylistView uPlaylistView;
 
-    Track track;
+    Playlist playlist;
+    OptRef<Track> currentTrack;
 
     ma_engine audioEngine;
 public:
@@ -47,4 +47,11 @@ public:
     bool IsWindowMinimized() const;
 
     static String FormatSeconds(int seconds);
+
+    void SelectTrack(OptRef<Track> track);
+
+    inline static OptRef<App> Instance = nullptr;
+    static Font& GetFont();
+    static Font& GetFontBold();
+    static ma_engine* GetAudioEngine();
 };

@@ -16,8 +16,11 @@ App::App(int w, int h)
       uTitlebar(uDoc.Root()),
       uPlaybar (uDoc.Root(), canvas),
       uSidebar (uDoc.Root(), canvas),
-      uMusic   (uDoc.Root())
+      uMusic   (uDoc.Root()),
+      uPlaylistView(uDoc.Root())
 {
+    Instance = *this;
+
     glfwSetWindowSizeLimits(gd.GetWindow(), 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
     WinUtils::UseCustomTitlebar(gd.GetWindow(), Titlebar::HEIGHT, Titlebar::HEIGHT);
     canvas.FlipYDirection();
@@ -26,7 +29,10 @@ App::App(int w, int h)
         Debug::QCritical$("Couldn't initialize audio engine! err code: {}", (int)result);
     }
 
-    Track::Load(track, "Resonance - Home.mp3", &audioEngine);
+    // Track::Load(track, "Resonance - Home.mp3", false);
+    playlist = Playlist::Load("D:\\Music\\Wrangled-Out", 4);
+    currentTrack = playlist.tracks[0];
+    currentTrack->LoadSoundIntoMemory();
 }
 
 App::~App() {
@@ -91,8 +97,9 @@ bool App::Run() {
 
         uTitlebar.Draw(canvas);
         uSidebar.Draw(canvas);
-        uMusic.Draw(canvas, track);
-        uPlaybar.Draw(canvas, track, io);
+        uMusic.Draw(canvas, currentTrack);
+        uPlaybar.Draw(canvas, currentTrack, io);
+        uPlaylistView.Draw(canvas, playlist);
 
         debugMode ^= io["I"].OnPress() && io.Shift();
         if (debugMode) {
@@ -120,7 +127,7 @@ bool App::Run() {
         }
 
         if (io[IO::Key::SPACE].OnPress()) {
-            track.Toggle();
+            currentTrack->Toggle();
         }
 
         {
@@ -143,4 +150,24 @@ bool App::IsWindowMinimized() const {
 
 String App::FormatSeconds(int seconds) {
     return Text::Format("{}:{:02}", seconds / 60, seconds % 60);
+}
+
+void App::SelectTrack(OptRef<Track> track) {
+    if (currentTrack.RefEquals(track)) return;
+
+    currentTrack->Stop();
+    currentTrack = track;
+    currentTrack->Start();
+}
+
+Font& App::GetFont() {
+    return Instance->font;
+}
+
+Font& App::GetFontBold() {
+    return Instance->fontBold;
+}
+
+ma_engine* App::GetAudioEngine() {
+    return &Instance->audioEngine;
 }

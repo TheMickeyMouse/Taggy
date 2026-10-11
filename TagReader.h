@@ -148,14 +148,14 @@ namespace ID3v2 {
         Bytes identifier;
 
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
     struct TextField {
         String value;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
 
         static TextField FromList(Span<const Str> vals);
@@ -164,33 +164,33 @@ namespace ID3v2 {
     struct CustomTextField {
         String desc, value;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
     struct YearField {
         u32 year;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
     struct DateField {
         u32 month, day;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
     struct TimeField {
         u32 hour, min;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
     struct NumberField {
         u64 value;
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
@@ -201,7 +201,7 @@ namespace ID3v2 {
         ArrayBox<byte> pictureData;
 
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
@@ -218,7 +218,7 @@ namespace ID3v2 {
         String desc, lyrics;
 
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
@@ -246,7 +246,7 @@ namespace ID3v2 {
         static Tuple<u32, Str> Next(Bytes& data);
 
         void Print() const;
-        bool Read(bool isUtf16, BytesMut data);
+        bool Read(bool isUtf16, Bytes data);
         bool Write(bool isUtf16, Vec<byte>& data) const;
         bool NeedsUtf16() const;
         void Add(u32 timestamp, Str lyrics);
@@ -260,7 +260,7 @@ namespace ID3v2 {
         SyncedLyrics lyrics;
 
         void Print() const;
-        bool Read(BytesMut data);
+        bool Read(Bytes data);
         bool Write(Vec<byte>& data) const;
     };
 
@@ -328,8 +328,11 @@ namespace ID3v2 {
 class TagReader {
 public:
     std::ifstream file;
-
-    TagReader(const char* filename);
+private:
+    ArrayBox<u8> rawBytes;
+    u32 currentPosition = 0;
+public:
+    TagReader(std::filesystem::path filename);
     Option<ID3v1> ReadV1();
 
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
@@ -337,19 +340,22 @@ public:
     bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload);
     static bool ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&> firstPosition);
 
-    ArrayBox<byte> ReadTagPayload(u32 size);
-    static bool ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead);
-    static bool ReadNumeric4Char(BytesMut string, char (&result) [4]);
-    static bool ReadNumericString(BytesMut string, u64& result);
+    static bool ReadTextWithEncoding(bool isUtf16, Bytes string, String& result, u32& bytesRead);
+    static bool ReadNumeric4Char(Bytes string, char (&result) [4]);
+    static bool ReadNumericString(Bytes string, u64& result);
 
     Option<ID3v2::Metadata> ReadV2();
+private:
+    void FReadTo(void* dest, u32 size);
+    void FSeek(u32 offset);
+    Bytes FGet(u32 size);
 };
 
 class TagWriter {
 public:
     std::ifstream input;
     std::ofstream file;
-    TagWriter(const char* source, const char* filename);
+    TagWriter(std::filesystem::path source, std::filesystem::path filename);
 
     bool WriteV2(Span<const ID3v2::TagFieldPair> tags);
     void WriteV2Header(u32 size);

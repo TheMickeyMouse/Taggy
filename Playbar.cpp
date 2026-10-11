@@ -13,7 +13,7 @@ Playbar::Playbar(UIRect& root, Canvas& canvas)
       ),
       uControls(uRoot->Pack(Dir::TOP, 1.0_per, { .centerX = true })),
 
-      uInfoTitle (uInfo->Pack(Dir::TOP, 0.32_per)),
+      uInfoTitle (uInfo->Pack(Dir::TOP, 0.32_per, { .margin = {{ .btm = PADDING * 0.3f }} })),
       uInfoArtist(uInfo->Pack(Dir::TOP, 0.24_per)),
 
       uDurationBar(uControls->Pack(Dir::BTM, PROGRESS_BAR_THICKNESS * Length::PX, { .margin = {{ .top = PROGRESS_BAR_THICKNESS }} })),
@@ -68,19 +68,11 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
 
     QWith$(uCover->BeginDraw(canvas)) {
         const fv2 size = uCover->rect.Size();
-        canvas.DrawRoundedTexture(SubTexture(track.cover).Flipped(), { 0, size }, size.x / 8.0f);
+        canvas.DrawRoundedTexture(track.cover, { 0, size }, size.x / 8.0f);
     }
 
-    QWith$(uInfoTitle->BeginDraw(canvas)) {
-        canvas.Stroke(WHITE);
-        const float h = uInfoTitle->rect.Height();
-        canvas.DrawText(track.title, h, 0, { TextAlign::LEFT, h });
-    }
-    QWith$(uInfoArtist->BeginDraw(canvas)) {
-        canvas.Stroke(LIGHT_GRAY);
-        const float h = uInfoArtist->rect.Height();
-        canvas.DrawText(track.artist, h, 0, { TextAlign::LEFT, h });
-    }
+    uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
+    uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
 
     QWith$(uControls->BeginDraw(canvas)) {
         Icon* icons[] = { &vPrev, track.isPlaying ? &vPause : &vPlay, &vNext };

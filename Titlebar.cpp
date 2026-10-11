@@ -49,6 +49,8 @@ void Titlebar::Draw(Canvas& canvas) {
 
     {
         canvas.Stroke(LIGHT_GRAY);
+        canvas.SetFont(App::GetFontBold());
         canvas.DrawText("Taggy v1.0.0", 16, uRoot->rect.Center());
+        canvas.SetFont(App::GetFont());
     }
 }

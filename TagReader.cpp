@@ -145,7 +145,7 @@ namespace ID3v2 {
         Text::Print("[owner = {}, identifier = ...binary data...]", owner);
     }
 
-    bool UFID::Read(BytesMut data) {
+    bool UFID::Read(Bytes data) {
         // UFID:
         // Owner identifier    <text string> 0x00
         // Identifier    <up to 64 bytes binary data>
@@ -164,7 +164,7 @@ namespace ID3v2 {
         Text::Print(value);
     }
 
-    bool TextField::Read(BytesMut data) {
+    bool TextField::Read(Bytes data) {
         // Text encoding    $xx
         // Information    <text string according to encoding>
         const bool isUTF16 = data[0];
@@ -186,7 +186,7 @@ namespace ID3v2 {
         Text::Print("[{}: {}]", desc, value);
     }
 
-    bool CustomTextField::Read(BytesMut data) {
+    bool CustomTextField::Read(Bytes data) {
         // <Header for 'User defined text information frame', ID: "TXXX">
         // Text encoding    $xx
         // Description    <text string according to encoding> $00 (00)
@@ -209,7 +209,7 @@ namespace ID3v2 {
         Text::Print("{}", year);
     }
 
-    bool YearField::Read(BytesMut data) {
+    bool YearField::Read(Bytes data) {
         char yearStr[4] = {};
         if (!TagReader::ReadNumeric4Char(data, yearStr)) return false;
 
@@ -237,7 +237,7 @@ namespace ID3v2 {
         Text::Print("{}/{}", month, day);
     }
 
-    bool DateField::Read(BytesMut data) {
+    bool DateField::Read(Bytes data) {
         char ddmmStr[4] = {};
         if (!TagReader::ReadNumeric4Char(data, ddmmStr)) return false;
 
@@ -263,7 +263,7 @@ namespace ID3v2 {
         Text::Print("{}:{}", hour, min);
     }
 
-    bool TimeField::Read(BytesMut data) {
+    bool TimeField::Read(Bytes data) {
         char hhmmStr[4] = {};
         if (!TagReader::ReadNumeric4Char(data, hhmmStr)) return false;
 
@@ -289,7 +289,7 @@ namespace ID3v2 {
         Text::Print("{}", value);
     }
 
-    bool NumberField::Read(BytesMut data) {
+    bool NumberField::Read(Bytes data) {
         return TagReader::ReadNumericString(data, value);
     }
 
@@ -304,7 +304,7 @@ namespace ID3v2 {
             (u32)pictureType, fileType == 0 ? "'.png'" : "'.jpeg'", desc);
     }
 
-    bool PictureField::Read(BytesMut data) {
+    bool PictureField::Read(Bytes data) {
         const bool isUTF16 = data[0];
         data.Advance(1);
 
@@ -361,7 +361,7 @@ namespace ID3v2 {
             Text::PrintLn("(lang: {}) {}", langName, lyrics);
     }
 
-    bool UnsyncedLyricsField::Read(BytesMut data) {
+    bool UnsyncedLyricsField::Read(Bytes data) {
         // section 4.9
         // Text encoding       $xx
         // Language            $xx xx xx
@@ -412,7 +412,7 @@ namespace ID3v2 {
         }
     }
 
-    bool SyncedLyrics::Read(bool isUtf16, BytesMut data) {
+    bool SyncedLyrics::Read(bool isUtf16, Bytes data) {
         u32 i = 0;
         String word;
 
@@ -468,7 +468,7 @@ namespace ID3v2 {
         lyrics.Print();
     }
 
-    bool SyncedLyricsField::Read(BytesMut data) {
+    bool SyncedLyricsField::Read(Bytes data) {
         // Text encoding       $xx
         // Language            $xx xx xx
         // Time stamp format   $xx
@@ -609,10 +609,10 @@ ID3v2::TagFieldPair ID3v2::Tags::Date(Str date) {
     return { TagID::TDAT, TextField(date) };
 }
 
-TagReader::TagReader(const char* filename)
-    : file(std::filesystem::path(filename), std::ios::in | std::ios::binary) {
+TagReader::TagReader(std::filesystem::path filename)
+    : file(filename, std::ios::in | std::ios::binary) {
     if (file.fail()) {
-        Debug::QError$("Failed to open file {}!", filename);
+        Debug::QError$("Failed to open file {}!", filename.string().c_str());
     }
 }
 
@@ -639,7 +639,7 @@ bool TagReader::ReadV2Header(ID3v2::Metadata& meta) {
     // version check
     meta.tagVersion = header.versionMajor << 8 | header.versionMinor;
     if (meta.tagVersion > 0x03'00) {
-        Debug::QError$("encountered ID3 tag version v2.{}.{}, which is higher than supported v2.3.0, aborting", (int)header.versionMajor, (int)header.versionMinor);
+        Debug::QWarn$("encountered ID3 tag version v2.{}.{}, which is higher than supported v2.3.0...", (int)header.versionMajor, (int)header.versionMinor);
         return false;
     }
 
@@ -677,7 +677,7 @@ bool TagReader::ReadV2TagHeader(ID3v2::Tag& tag) {
     // Size           $xx xx xx xx
     // Flags          $xx xx
     FrameHeader fHeader = {};
-    file.read((char*)&fHeader, sizeof(FrameHeader));
+    FReadTo((char*)&fHeader, sizeof(FrameHeader));
 
     // id check
     const u32 idBytes = Memory::ReadU32Big(fHeader.id);
@@ -716,7 +716,7 @@ bool TagReader::ReadV2TagHeader(ID3v2::Tag& tag) {
         Debug::QWarn$("groups are not yet supported.");
         skip += 1;
     }
-    file.seekg(skip, std::ios_base::cur);
+    FSeek(skip);
 
     return true;
 }
@@ -726,14 +726,14 @@ bool TagReader::ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload) {
     const TagRules& rules = GetTagRules(t.id);
     if (!rules.supported) {
         Debug::QWarn$("tag '{}' ({}) is currently not supported", (const char*)TAG_ID_NAME_LOOKUP[(u32)t.id - 1], rules.properName);
-        file.seekg(t.size, std::ios_base::cur);
+        FSeek(t.size);
         return true;
     }
     if (rules.deprecatedInV4) {
         Debug::QWarn$("tag '{}' ({}) is deprecated in version 4.0", (const char*)TAG_ID_NAME_LOOKUP[(u32)t.id - 1], rules.properName);
     }
 
-    ArrayBox<byte> payloadBinary = ReadTagPayload(t.size);
+    Bytes payloadBinary = FGet(t.size);
 
     switch (rules.format) {
         case TagFormat::TEXT: {
@@ -881,24 +881,15 @@ bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&
     return true;
 }
 
-ArrayBox<byte> TagReader::ReadTagPayload(u32 size) {
-    ArrayBox<byte> payload = ArrayBox<byte>::AllocateUninit(size);
-    file.read((char*)payload.Data(), size);
-    return payload;
-}
-
-bool TagReader::ReadTextWithEncoding(bool isUtf16, BytesMut string, String& result, u32& bytesRead) {
+bool TagReader::ReadTextWithEncoding(bool isUtf16, Bytes string, String& result, u32& bytesRead) {
     if (isUtf16) {
-        Span<u16> words = string.Transmute<Text::Utf16>().SplitOnce(0)[1_st];
+        Span<const u16> words = string.Transmute<Text::Utf16>().SplitOnce(0)[1_st];
         bytesRead = (words.Length() + 1) * 2;
         // detect bom
         const u16 bom = words[0];
-        if (bom == 0xFFFE) { // incorrect endianness; need to byteswap
-            for (u32 i = 1; i < words.Length(); ++i) {
-                Memory::WriteU16(words[i], &words[i]);
-            }
-        }
-        auto txt = Text::Utf16To8(words.Skip(1));
+        const bool needsBswap = bom == 0xFFFE;
+
+        auto txt = needsBswap ? Text::Utf16BswapTo8(words.Skip(1)) : Text::Utf16To8(words.Skip(1));
         if (!txt) {
             Debug::QError$("ill-formed UTF-16 string!");
             return false;
@@ -912,7 +903,7 @@ bool TagReader::ReadTextWithEncoding(bool isUtf16, BytesMut string, String& resu
     return true;
 }
 
-bool TagReader::ReadNumeric4Char(BytesMut string, char(& result)[4]) {
+bool TagReader::ReadNumeric4Char(Bytes string, char(& result)[4]) {
     const bool isUTF16 = string[0];
 
     if (isUTF16) {
@@ -933,7 +924,7 @@ bool TagReader::ReadNumeric4Char(BytesMut string, char(& result)[4]) {
     return true;
 }
 
-bool TagReader::ReadNumericString(BytesMut string, u64& result) {
+bool TagReader::ReadNumericString(Bytes string, u64& result) {
     const bool isUTF16 = string[0];
     string.Advance(1);
     if (isUTF16) {
@@ -964,6 +955,10 @@ Option<ID3v2::Metadata> TagReader::ReadV2() {
     Metadata meta = {};
     if (!ReadV2Header(meta)) return nullptr;
 
+    rawBytes = ArrayBox<u8>::AllocateUninit(meta.size);
+    file.read((char*)rawBytes.Data(), meta.size);
+    currentPosition = 0;
+
     for (usize readSize = 0; readSize < meta.size;) {
         Tag tag = {};
         if (!ReadV2TagHeader(tag)) return nullptr;
@@ -980,14 +975,29 @@ Option<ID3v2::Metadata> TagReader::ReadV2() {
     return meta;
 }
 
-TagWriter::TagWriter(const char* source, const char* filename)
-    : input(std::filesystem::path(source), std::ios::binary),
-      file(std::filesystem::path(filename), std::ios::trunc | std::ios::binary) {
+void TagReader::FReadTo(void* dest, u32 size) {
+    Memory::MemCopyNoOverlap(dest, rawBytes.Data() + currentPosition, size);
+    currentPosition += size;
+}
+
+void TagReader::FSeek(u32 offset) {
+    currentPosition += offset;
+}
+
+Bytes TagReader::FGet(u32 size) {
+    const Bytes b = rawBytes.Subspan(currentPosition, size);
+    currentPosition += size;
+    return b;
+}
+
+TagWriter::TagWriter(std::filesystem::path source, std::filesystem::path filename)
+    : input(source, std::ios::binary),
+      file(filename, std::ios::trunc | std::ios::binary) {
     if (input.fail()) {
-        Debug::QError$("Failed to open input file {}!", source);
+        Debug::QError$("Failed to open input file {}!", source.string().c_str());
     }
     if (file.fail()) {
-        Debug::QError$("Failed to open output file {}!", filename);
+        Debug::QError$("Failed to open output file {}!", filename.string().c_str());
     }
 }
 

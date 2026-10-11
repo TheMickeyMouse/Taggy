@@ -24,15 +24,24 @@ namespace Dirs {
 class UIRect;
 
 struct Length {
-    float val;
-    enum Unit {
+    float val, val2 = 0;
+    enum Unit : u8 {
         PX,  // pixels
         PER, // percentage
         FW,  // fraction of width
         FH,  // fraction of height
-    } unit;
+        RPER // percentage of remaining
+    } unit, unit2 = PX;
+    enum Op : u8 { NONE, MIN, MAX } op = NONE;
 
-    float Resolve(const UIRect& parent, Dir side) const;
+    Length(float x = 0, Unit u = PX) : val(x), unit(u) {}
+    Length(float x, Unit u, float y, Unit v, Op op) : val(x), val2(y), unit(u), unit2(v), op(op) {}
+
+    static float ResolveSingle(const UIRect& parent, const fRect2D& remaining, Dir side, float val, Unit unit);
+    float Resolve(const UIRect& parent, const fRect2D& remaining, Dir side) const;
+
+    static Length Min(const Length& a, const Length& b);
+    static Length Max(const Length& a, const Length& b);
 };
 
 inline Length operator*(float x, Length::Unit u) { return Length { x, u }; }
@@ -130,6 +139,8 @@ public:
     fv2 RelativePos(const fv2& p) const;
 
     UIRef Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
+
+    void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false);
 
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {

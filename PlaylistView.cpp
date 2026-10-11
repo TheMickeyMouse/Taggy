@@ -1,0 +1,57 @@
+#include "PlaylistView.h"
+
+#include "App.h"
+
+SongView::SongView(UIRect& root)
+    : uRoot(root.Pack(Dir::TOP, 80.0_px, { .padding = 10, .margin = {{ .btm = 5 }} })),
+      uCover(uRoot->Pack(Dir::LEFT, 1.0_fh, { .margin = {{ .right = 5 }} })),
+      uInfo (uRoot->Pack(Dir::LEFT, 0.4_per, { .centerY = true })),
+      uInfoTitle (uInfo->Pack(Dir::TOP, 0.4_per)),
+      uInfoArtist(uInfo->Pack(Dir::TOP, 0.4_per))
+{}
+
+void SongView::Draw(Canvas& canvas, Track& track) {
+    [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
+
+    QWith$(uCover->BeginDraw(canvas)) {
+        canvas.DrawRoundedTexture(track.cover, { 0, uCover->rect.Size() }, 5);
+    }
+
+    uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
+    uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
+
+    if (uCover->onClick) {
+        App::Instance->SelectTrack(track);
+    }
+}
+
+PlaylistView::PlaylistView(UIRect& root)
+    : uRoot(root.Pack(Dir::LEFT, 1.0f * Length::RPER, { .padding = PADDING / 2, .margin = PADDING })),
+      uTitle(uRoot->Pack(Dir::TOP, 0.2f * Length::FH, { .margin = {{ .btm = PADDING / 2 }} })),
+      uTracks(uRoot->Pack(Dir::LEFT, 1.0f * Length::PER)) {
+
+    for (auto& uSong : uSongs) {
+        uSong = SongView(uTracks);
+    }
+}
+
+void PlaylistView::Draw(Canvas& canvas, Playlist& playlist) {
+    [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
+
+    canvas.NoStroke();
+    canvas.Fill(BACKGROUND);
+    canvas.DrawRoundedRect({ 0, uRoot->rect.Size() }, PADDING);
+
+    QWith$(uTitle->BeginDraw(canvas)) {
+        canvas.Fill(BACKGROUND_ALT);
+        canvas.DrawVarRoundedRect({ 0, uTitle->rect.Size() }, PADDING / 4, PADDING / 2, PADDING / 4, PADDING / 2);
+    }
+
+    QWith$(uTracks->BeginDraw(canvas)) {
+        canvas.DrawVarRoundedRect({ 0, uTracks->rect.Size() }, PADDING / 2, PADDING / 4, PADDING / 2, PADDING / 4);
+    }
+
+    for (int i = 0; i < std::min(std::size(uSongs), playlist.tracks.Length()); ++i) {
+        uSongs[i].Draw(canvas, playlist.tracks[i]);
+    }
+}
