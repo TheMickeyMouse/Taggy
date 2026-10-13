@@ -85,7 +85,7 @@ bool App::Run() {
 
         const auto& io = gd.GetIO();
 
-        uDoc.CheckMouseStates(io.GetMousePos(), io.LeftMouse().Pressed(), io.LeftMouse().OnPress());
+        uDoc.CheckMouseStates(io.GetMousePos(), io.LeftMouse().Pressed(), io.LeftMouse().OnPress(), io.GetMouseScrollDelta());
 
         if (io['K'].OnPress() && io.Shift()) {
             return false;

@@ -57,22 +57,18 @@ void Playbar::Update(float dt) {
 void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
     [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
 
-    canvas.Fill(BACKGROUND);
-    canvas.DrawRect({ 0, uRoot->rect.Size() });
-
-    // canvas.Stroke(ACCENT);
-    // canvas.StrokeWeight(PROGRESS_BAR_THICKNESS);
-    // canvas.DrawLine(0, { uRoot->rect.Width(), 0 });
+    uRoot->Background(canvas, BACKGROUND);
 
     canvas.Fill(BACKGROUND_ALT);
-
     QWith$(uCover->BeginDraw(canvas)) {
         const fv2 size = uCover->rect.Size();
         canvas.DrawRoundedTexture(track.cover, { 0, size }, size.x / 8.0f);
     }
 
-    uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
-    uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
+    QWith$(uInfo->BeginDraw(canvas)) {
+        uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
+        uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
+    }
 
     QWith$(uControls->BeginDraw(canvas)) {
         Icon* icons[] = { &vPrev, track.isPlaying ? &vPause : &vPlay, &vNext };

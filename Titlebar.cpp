@@ -12,9 +12,7 @@ Titlebar::Titlebar(UIRect& root)
 
 void Titlebar::Draw(Canvas& canvas) {
     const auto _ = uRoot->BeginDraw(canvas);
-
-    canvas.Fill(BACKGROUND);
-    canvas.DrawRect({ 0, uRoot->rect.Size() });
+    uRoot->Background(canvas, BACKGROUND);
 
     for (auto btn : { uCloseBtn, uMaximizeBtn, uMinimizeBtn }) {
         [[maybe_unused]] const auto _2 = btn->BeginDraw(canvas);

@@ -107,21 +107,33 @@ public:
 
     Dir side;
     bool centerChildrenX = false, centerChildrenY = false;
+
     // io states
+    // NOTES (=>, ^, means "implies"):
+    // isChHov   => isHov
+    //  ^            ^
+    // isChMP    => isMP
+    //  ^            ^
+    // onChClick => onClick,
     bool isHovered              : 1 = false,
          isChildrenHovered      : 1 = false,
          isMousePressed         : 1 = false,
          isChildrenMousePressed : 1 = false,
          onClick                : 1 = false,
          onChildrenClick        : 1 = false;
+    float scrollDelta = 0;
     fv2 clickPos;
 
-    enum : u32 { EMPTY = ~(u32)0 };
-    u32 siblingID = EMPTY, childID = EMPTY; // linked list/tree like scheme
+    enum : u32 { EMPTY = ~(u32)0, ROOT = 0 };
+    u32 parentID = EMPTY, siblingID = EMPTY, childID = EMPTY; // linked list/tree like scheme
 
     static UIRect Root(const fRect2D& root, UIDoc& doc);
     OptRef<UIRect> Sibling();
     OptRef<UIRect> Child();
+    OptRef<UIRect> Parent();
+    OptRef<const UIRect> Sibling() const;
+    OptRef<const UIRect> Child() const;
+    OptRef<const UIRect> Parent() const;
 
     bool HasSiblings() const;
     bool HasChildren() const;
@@ -131,8 +143,7 @@ public:
 
     void DrawDebug(Canvas& canvas);
 
-    bool CheckMouseStates(const fv2& mouse, bool pressed, bool clicked);
-    void ClearMouseStates(const fv2& mouse, bool pressed);
+    void ClearMouseStates();
 
     fRect2D GetInnerRect() const;
 
@@ -140,12 +151,14 @@ public:
 
     UIRef Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
 
+    void Background(Canvas& c, const fColor& color, float border = 0);
+    void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl);
     void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false);
 
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {
         auto t = c.PushTransform();
-        c.transform.pos = rect.BottomLeft();
+        c.transform.pos += rect.BottomLeft() - Parent()->rect.BottomLeft();
         return t;
     }
 };
@@ -164,7 +177,8 @@ struct UISiblingIter : IIterator<UIRect&, UISiblingIter> {
 class UIDoc {
 public:
     Vec<UIRect> elements; // first is always root
-    u32 hovered = NONE, active = NONE; // the element being held
+    u32 hoveredID = NONE; // the smallest element hovered
+    u32 focusedID = NONE; // the smallest element pressed
 
     UIDoc(const fRect2D& root);
 private:
@@ -179,8 +193,12 @@ public:
     void SetRect(const fRect2D& rect);
 
     void ComputeLayout();
-    void CheckMouseStates(const fv2& mouse, bool pressed, bool clicked);
+    void CheckMouseStates(const fv2& mouse, bool pressed, bool clicked, float scroll);
     void DrawDebug(Canvas& canvas);
+
+    u32 SiblingOf(u32 x);
+    u32 ChildOf(u32 x);
+    u32 ParentOf(u32 x);
 
     inline static OptRef<UIDoc> Instance = nullptr;
 

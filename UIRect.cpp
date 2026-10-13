@@ -176,6 +176,22 @@ OptRef<UIRect> UIRect::Child() {
     return (*UIDoc::Instance)[childID];
 }
 
+OptRef<UIRect> UIRect::Parent() {
+    return (*UIDoc::Instance)[parentID];
+}
+
+OptRef<const UIRect> UIRect::Sibling() const {
+    return (*UIDoc::Instance)[siblingID];
+}
+
+OptRef<const UIRect> UIRect::Child() const {
+    return (*UIDoc::Instance)[childID];
+}
+
+OptRef<const UIRect> UIRect::Parent() const {
+    return (*UIDoc::Instance)[parentID];
+}
+
 bool UIRect::HasSiblings() const {
     return siblingID != ~0;
 }
@@ -224,52 +240,13 @@ void UIRect::DrawDebug(Canvas& canvas) {
         DBG_FNT_SIZE, center.BottomLeft(), { TextAlign::LEFT | TextAlign::VBOTTOM });
 }
 
-bool UIRect::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked) {
-    isHovered = rect.Contains(mouse);
-    if (!isHovered) {
-        ClearMouseStates(mouse, pressed);
-        return false; // the children won't be hovered anyways
-    }
-
-    onClick = clicked;
-    isMousePressed = isMousePressed ? pressed : clicked;
-    if (pressed) clickPos = mouse - rect.BottomLeft();
-
-    isChildrenHovered = isChildrenMousePressed = onChildrenClick = false;
-    for (auto& child : Children()) {
-        isChildrenHovered |= child.CheckMouseStates(mouse, pressed, clicked);
-        isChildrenMousePressed |= child.isMousePressed;
-        onChildrenClick |= child.onChildrenClick;
-    }
-
-    if (!isChildrenHovered)
-        UIDoc::Instance->hovered = UIDoc::Instance->GetIDFor(*this);
-
-    return true;
-}
-
-void UIRect::ClearMouseStates(const fv2& mouse, bool pressed) {
-    isHovered = onClick = onChildrenClick = false;
-
-    // we should keep the ui element 'pressed' even if the mouse leaves the hitbox
-    if (isMousePressed && !isChildrenMousePressed) {
-        // keep updating press state & mouse position
-        isMousePressed = pressed;
-        clickPos = mouse - rect.BottomLeft();
-    } else if (isChildrenMousePressed) {
-        goto clearChildren;
-    } else {
-        isMousePressed = false;
-    }
-
-    if (isChildrenHovered) {
-        clearChildren:
-
-        isChildrenHovered = false;
-        for (auto& child : Children()) {
-            child.ClearMouseStates(mouse, pressed);
-        }
-    }
+void UIRect::ClearMouseStates() {
+    isHovered              =
+    isChildrenHovered      =
+    isMousePressed         =
+    isChildrenMousePressed =
+    onClick                =
+    onChildrenClick        = false;
 }
 
 fRect2D UIRect::GetInnerRect() const {
@@ -292,10 +269,29 @@ UIRef UIRect::Pack(Dir childSide, Length childLen, const UIRectOptions& options)
     });
 }
 
+void UIRect::Background(Canvas& c, const fColor& color, float border) {
+    [[maybe_unused]] const auto _ = c.PushStyles();
+
+    c.NoStroke();
+    c.Fill(color);
+    if (border == 0.0f) {
+        c.DrawRect({ 0, rect.Size() });
+    } else {
+        c.DrawRoundedRect({ 0, rect.Size() }, border);
+    }
+}
+
+void UIRect::Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl) {
+    [[maybe_unused]] const auto _ = c.PushStyles();
+
+    c.NoStroke();
+    c.Fill(color);
+    c.DrawVarRoundedRect({ 0, rect.Size() }, tr, br, tl, bl);
+}
+
 void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) {
-    [[maybe_unused]] const auto _ = c.PushTransform();
+    [[maybe_unused]] const auto _ = BeginDraw(c);
     [[maybe_unused]] const auto _2 = c.PushStyles();
-    c.transform.pos = 0;
 
     const fv2 size = rect.Size();
     c.Stroke(color);
@@ -318,17 +314,20 @@ void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOpt
     goto normalRender;
 
     renderEllipses:
-    preLen = len - (i - text.First(i).TrimEnd().Length()) * pointSize;
+    preLen = len - (float)(i - text.First(i).TrimEnd().Length()) * pointSize;
     for (usize j = i; j < text.Length(); ++j) {
         if (len > maxLength) { // actually render ellipses
-            c.DrawText(text.First(i), size.y, rect.BottomLeft(), { align, size });
+            c.DrawText(text.First(i), size.y, 0, { align, size });
 
             // normal "..." takes up too much space; fake it instead
             const float r = font.CalcCharWidth('.') * relativeSize / 8.0f;
-            fv2 p = rect.BottomLeft();
-            p.x += preLen * relativeSize + 1.5f * r;
-            p.y -= 0.5f * (size.y - (font.GetMetric().fontHeight) * relativeSize / 64.0f) + r * 1.5f;
-            p.y += (font.GetMetric().ascend / 64.0f - pointMetric.offset.y) * relativeSize;
+            fv2 p = {
+                preLen * relativeSize + 1.5f * r,
+                ((float)font.GetMetric().ascend / 64.0f - pointMetric.offset.y) * relativeSize // moves pen to '.' position
+            };
+
+            // for centering text
+            p.y -= 0.5f * (size.y - (float)font.GetMetric().fontHeight * relativeSize / 64.0f) + r * 1.5f;
 
             c.StrokeWeight(r * 0.75f);
             c.DrawPoint(p); p.x += 2.5f * r;
@@ -340,7 +339,7 @@ void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOpt
     }
 
     normalRender:
-    c.DrawText(text, size.y, rect.BottomLeft(), { align, size });
+    c.DrawText(text, size.y, 0, { align, size });
 }
 
 UIRect& UISiblingIter::CurrentImpl() const {
@@ -365,7 +364,7 @@ UIRect& UIDoc::operator[](u32 i) {
 }
 
 UIRect& UIDoc::Root() {
-    return elements[0];
+    return elements[UIRect::ROOT];
 }
 
 u32 UIDoc::GetIDFor(const UIRect& u) const {
@@ -380,12 +379,14 @@ UIRef UIDoc::Add(const UIRect& u) {
 
 UIRef UIDoc::AddChild(u32 i, const UIRect& child) {
     const u32 childID = elements.Length();
-    elements.Push(child);
+    UIRect& newChild = elements.Push(child);
     UIRect& parent = elements[i];
+
+    newChild.parentID = i;
 
     if (parent.HasChildren()) {
         u32 lastChild = parent.childID, next;
-        while ((next = elements[lastChild].siblingID) != UIRect::EMPTY) lastChild = next;
+        while ((next = SiblingOf(lastChild)) != UIRect::EMPTY) lastChild = next;
         elements[lastChild].siblingID = childID;
     } else {
         parent.childID = childID;
@@ -400,7 +401,7 @@ void UIDoc::SetRect(const fRect2D& rect) {
 
 void UIDoc::ComputeLayout() {
     Vec<u32> queue;
-    queue.Push(0);
+    queue.Push(UIRect::ROOT);
 
     while (auto currentID = queue.TryTake()) {
         // Debug::QInfo$("eval {}", *currentID);
@@ -408,7 +409,7 @@ void UIDoc::ComputeLayout() {
 
         fRect2D remainingSpace = curr.padding.Shrink(curr.rect);
         u32 currentStackSize = queue.Length();
-        for (u32 i = curr.childID; i != UIRect::EMPTY; i = elements[i].siblingID) {
+        for (u32 i = curr.childID; i != UIRect::EMPTY; i = SiblingOf(i)) {
             UIRect& child = elements[i];
             // calc the length in the direction of the axis `child.side`
             const float len = child.length.Resolve(curr, remainingSpace, child.side);
@@ -434,11 +435,67 @@ void UIDoc::ComputeLayout() {
     }
 }
 
-void UIDoc::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked) {
-    Root().CheckMouseStates(mouse, pressed, clicked);
+void UIDoc::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked, float scroll) {
+    // Root().CheckMouseStates(mouse, pressed, clicked, scroll);
+
+    for (auto& e : elements) e.ClearMouseStates();
+
+    // keep focused elements focused, even if the mouse leaves the hitbox, as long as the mouse is still pressed
+    if (focusedID != UIRect::EMPTY && pressed) {
+        UIRect& focus = elements[focusedID];
+        focus.isMousePressed = pressed;
+        focus.clickPos = mouse - focus.rect.BottomLeft();
+    } else {
+        focusedID = UIRect::EMPTY;
+    }
+
+    // next is always a child of search
+    u32 search = UIRect::ROOT, next = UIRect::ROOT;
+    while (next != UIRect::EMPTY) {
+        UIRect& curr = elements[next];
+
+        if (curr.rect.Contains(mouse)) { // search deeper
+            curr.isHovered = true;
+            curr.onClick = clicked;
+            // when ur mouse is held and hoveres over a ui elm,
+            // without this check it would register as a mouse press (we dont want this)
+            // should only trigger when the mouse is pressed inside the elm to begin with
+            curr.isMousePressed = curr.isMousePressed ? pressed : clicked;
+            if (curr.isMousePressed) focusedID = next;
+            if (pressed) curr.clickPos = mouse - curr.rect.BottomLeft();
+            curr.scrollDelta = scroll;
+
+            search = next;
+            next = curr.childID;
+        } else { // search wider
+            next = curr.siblingID;
+        }
+    }
+    // search is the last element hovered; iterate backwards
+    hoveredID = search;
+    UIRect& hov = elements[hoveredID];
+
+    const bool isChildPressed = hov.isMousePressed;
+    while ((search = ParentOf(search)) != UIRect::EMPTY) {
+        UIRect& curr = elements[search];
+        curr.isChildrenHovered = true;
+        curr.isChildrenMousePressed = isChildPressed;
+    }
 }
 
 void UIDoc::DrawDebug(Canvas& canvas) {
-    if (hovered == UIRect::EMPTY) return;
-    elements[hovered].DrawDebug(canvas);
+    if (hoveredID == UIRect::EMPTY) return;
+    elements[hoveredID].DrawDebug(canvas);
+}
+
+u32 UIDoc::SiblingOf(u32 x) {
+    return elements[x].siblingID;
+}
+
+u32 UIDoc::ChildOf(u32 x) {
+    return elements[x].childID;
+}
+
+u32 UIDoc::ParentOf(u32 x) {
+    return elements[x].parentID;
 }

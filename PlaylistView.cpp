@@ -17,8 +17,10 @@ void SongView::Draw(Canvas& canvas, Track& track) {
         canvas.DrawRoundedTexture(track.cover, { 0, uCover->rect.Size() }, 5);
     }
 
-    uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
-    uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
+    QWith$(uInfo->BeginDraw(canvas)) {
+        uInfoTitle->Label(canvas, track.title, WHITE, TextAlign::LEFT, true);
+        uInfoArtist->Label(canvas, track.artist, LIGHT_GRAY);
+    }
 
     if (uCover->onClick) {
         App::Instance->SelectTrack(track);
@@ -26,8 +28,8 @@ void SongView::Draw(Canvas& canvas, Track& track) {
 }
 
 PlaylistView::PlaylistView(UIRect& root)
-    : uRoot(root.Pack(Dir::LEFT, 1.0f * Length::RPER, { .padding = PADDING / 2, .margin = PADDING })),
-      uTitle(uRoot->Pack(Dir::TOP, 0.2f * Length::FH, { .margin = {{ .btm = PADDING / 2 }} })),
+    : uRoot  (root  .Pack(Dir::LEFT, 1.0f * Length::RPER, { .padding = PADDING / 2, .margin = PADDING })),
+      uTitle (uRoot->Pack(Dir::TOP,  0.2f * Length::FH,   { .margin = {{ .btm = PADDING / 2 }} })),
       uTracks(uRoot->Pack(Dir::LEFT, 1.0f * Length::PER)) {
 
     for (auto& uSong : uSongs) {
@@ -37,21 +39,19 @@ PlaylistView::PlaylistView(UIRect& root)
 
 void PlaylistView::Draw(Canvas& canvas, Playlist& playlist) {
     [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
+    yPosition += uRoot->scrollDelta * 8.0f;
 
-    canvas.NoStroke();
-    canvas.Fill(BACKGROUND);
-    canvas.DrawRoundedRect({ 0, uRoot->rect.Size() }, PADDING);
+    uRoot->Background(canvas, BACKGROUND, PADDING);
 
-    QWith$(uTitle->BeginDraw(canvas)) {
-        canvas.Fill(BACKGROUND_ALT);
-        canvas.DrawVarRoundedRect({ 0, uTitle->rect.Size() }, PADDING / 4, PADDING / 2, PADDING / 4, PADDING / 2);
-    }
+    QWith$(uTitle->BeginDraw(canvas))
+        uTitle->Background(canvas, BACKGROUND_ALT, PADDING / 4, PADDING / 2, PADDING / 4, PADDING / 2);
 
     QWith$(uTracks->BeginDraw(canvas)) {
-        canvas.DrawVarRoundedRect({ 0, uTracks->rect.Size() }, PADDING / 2, PADDING / 4, PADDING / 2, PADDING / 4);
-    }
+        uTracks->Background(canvas, BACKGROUND_ALT, PADDING / 2, PADDING / 4, PADDING / 2, PADDING / 4);
+        canvas.transform.pos.y += yPosition;
 
-    for (int i = 0; i < std::min(std::size(uSongs), playlist.tracks.Length()); ++i) {
-        uSongs[i].Draw(canvas, playlist.tracks[i]);
+        for (int i = 0; i < std::min(std::size(uSongs), playlist.tracks.Length()); ++i) {
+            uSongs[i].Draw(canvas, playlist.tracks[i]);
+        }
     }
 }

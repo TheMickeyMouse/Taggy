@@ -19,6 +19,8 @@ class PlaylistView {
 public:
     UIRef uRoot, uTitle, uTracks;
 
+    float yPosition = 0;
+
     static constexpr float PADDING = 20;
     static constexpr int PAGE = 5;
 

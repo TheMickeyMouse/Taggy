@@ -2,7 +2,6 @@
 #include "miniaudio.h"
 #include "UIRect.h"
 #include <filesystem>
-#include <fstream>
 
 using Path = std::filesystem::path;
 
