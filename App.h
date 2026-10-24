@@ -12,6 +12,7 @@ using namespace Graphics;
 using namespace Math;
 
 class App {
+public:
     GraphicsDevice gd;
     Canvas canvas;
     iv2 windowSize;

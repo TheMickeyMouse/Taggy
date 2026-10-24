@@ -5,56 +5,27 @@
 
 using Path = std::filesystem::path;
 
-struct Sound {
-    struct Header {
-        ma_sound sound;
-        ma_decoder decoder;
-        /* byte rawAudioBytes[...] */
-    };
-    void* data = nullptr;
-    u64 audioSize = 0;
-
-    static Sound Allocate(u64 audioBytes);
-private:
-    Header* GetHeader() const;
-
-    Sound(void* data, u64 size);
-public:
-    ma_sound* GetAudio() const;
-    ma_decoder* GetDecoder() const;
-    Bytes GetAudioBytes() const;
-    BytesMut GetAudioBytes();
-
-    explicit operator bool() const;
-
-    Sound() = default;
-    Sound(const Sound&) = delete;
-    Sound& operator=(const Sound&) = delete;
-    Sound(Sound&&) noexcept;
-    Sound& operator=(Sound&&) noexcept;
-    ~Sound();
-};
-
 struct Track {
     Path filePath;
-    u32 audioBeginPos;
+    u32 audioBeginPos = 0;
 
     Texture2D cover;
     String title, artist;
 
-    Sound sound = {};
+    Box<ma_sound> sound;
 
-    float durationSec;
+    float durationSec = 0.0f;
     bool isPlaying = false;
+    bool loaded = false;
 
     static constexpr u32 FADE_TIME_MS = 200;
 
     Track() = default;
 
-    static bool Load(Out<Track&> track, Path filename, bool lazyLoad);
+    static Track UnloadedFromFile(Path fname);
+    static bool Load(Out<Track&> track, bool lazyLoad);
 
     void LoadSoundIntoMemory();
-    void LoadSoundIntoMemory(std::ifstream& file);
 
     void Start();
     void Stop();

@@ -1,4 +1,5 @@
 #pragma once
+#include "UIRect.h"
 #include "GUI/Canvas.h"
 #include "Utils/Math/Rect.h"
 
@@ -86,99 +87,123 @@ class UIDoc;
 struct UISiblingIter;
 
 struct UIRef {
-    u32 i;
+    enum : u32 { EMPTY = ~(u32)0, ROOT = 0 };
+    u32 i = 0;
 
-    operator UIRect&();
-    operator const UIRect&() const;
-    UIRect& operator*();
-    const UIRect& operator*() const;
-    UIRect* operator->();
-    const UIRect* operator->() const;
+    UIRef(u32 i = 0) : i(i) {}
+    UIRef(UIRect& r);
+
+    operator UIRect&() const;
+    UIRect& operator*() const;
+    UIRect* operator->() const;
+    explicit operator bool() const;
+    explicit operator u32() const;
+
+    UIRef Sibling() const;
+    UIRef Child() const;
+    UIRef Parent() const;
+    UISiblingIter Siblings() const;
+    UISiblingIter Children() const;
+
+    void Kill() const;
+    void TruncChildren(u32 n) const;
 
     bool operator==(const UIRef& other) const = default;
 };
 
 class UIRect {
 public:
-    Length length;
+    fRect2D rect; // computed
     Sides padding, margin;
-    // computed
-    fRect2D rect;
+    Length length;
+    UIRef self;
 
     Dir side;
     bool centerChildrenX = false, centerChildrenY = false;
+    // if false, then this object is destroyed
+    bool valid = false;
 
-    // io states
-    // NOTES (=>, ^, means "implies"):
-    // isChHov   => isHov
-    //  ^            ^
-    // isChMP    => isMP
-    //  ^            ^
-    // onChClick => onClick,
-    bool isHovered              : 1 = false,
-         isChildrenHovered      : 1 = false,
-         isMousePressed         : 1 = false,
-         isChildrenMousePressed : 1 = false,
-         onClick                : 1 = false,
-         onChildrenClick        : 1 = false;
-    float scrollDelta = 0;
-    fv2 clickPos;
+    enum MouseStates {
+        NONE = 0,
+        HOVERED = 1,
+        PRESSED = 2,
+        CLICKED = 4,
+        CHILDREN_INVOLVED = 8,
+    };
+    int mouseStates = NONE;
 
-    enum : u32 { EMPTY = ~(u32)0, ROOT = 0 };
-    u32 parentID = EMPTY, siblingID = EMPTY, childID = EMPTY; // linked list/tree like scheme
+    void SetState(int state, bool val);
+    bool GetState(int state) const;
+    void ClearMouseStates();
+    float ScrollDelta() const;
+    fv2 ClickPos() const;
+
+    const UIRef* operator->() const;
 
     static UIRect Root(const fRect2D& root, UIDoc& doc);
-    OptRef<UIRect> Sibling();
-    OptRef<UIRect> Child();
-    OptRef<UIRect> Parent();
-    OptRef<const UIRect> Sibling() const;
-    OptRef<const UIRect> Child() const;
-    OptRef<const UIRect> Parent() const;
-
-    bool HasSiblings() const;
-    bool HasChildren() const;
-
-    UISiblingIter Siblings();
-    UISiblingIter Children();
 
     void DrawDebug(Canvas& canvas);
 
-    void ClearMouseStates();
+    void ComputeLayout();
+
+    void MarkDestroyed();
+    bool IsValid() const;
+
+    template <usize N>
+    Array<UIRef, N> Grab();
 
     fRect2D GetInnerRect() const;
-
     fv2 RelativePos(const fv2& p) const;
 
-    UIRef Pack(Dir childSide, Length childLen, const UIRectOptions& options = {});
-
-    void Background(Canvas& c, const fColor& color, float border = 0);
-    void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl);
-    void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false);
+    UIRef Pack(Dir childSide, Length childLen, Str name, const UIRectOptions& options = {});
 
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {
         auto t = c.PushTransform();
-        c.transform.pos += rect.BottomLeft() - Parent()->rect.BottomLeft();
+        c.transform.pos += rect.BottomLeft() - self.Parent()->rect.BottomLeft();
         return t;
     }
+
+    void Background(Canvas& c, const fColor& color, float border = 0);
+    void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl);
+    void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false);
 };
 
-struct UISiblingIter : IIterator<UIRect&, UISiblingIter> {
-    using Item = UIRect&;
-    OptRef<UIRect> current;
+struct UISiblingIter : IIterator<const UIRef, UISiblingIter> {
+    using Item = const UIRef;
+    UIRef current;
 
-    UISiblingIter(UIRect& begin) : current(begin) {}
+    UISiblingIter(UIRef begin) : current(begin) {}
 
-    UIRect& CurrentImpl() const;
+    UIRef CurrentImpl() const;
     void AdvanceImpl();
     bool CanNextImpl() const;
 };
 
+template <usize N> Array<UIRef, N> UIRect::Grab() {
+    return self.Children().CollectFirstN<N>();
+}
+
 class UIDoc {
 public:
+    // `elements` are stored continuously, where the first element [0] is the root node
+    // each node points to its parent, sibling and child (each may be null)
+    // deleted elements have `valid` set to false and point to the next deleted elements in `siblingID`.
+    // new elements should replace deleted elements, otherwise push to the back of the array.
+
     Vec<UIRect> elements; // first is always root
-    u32 hoveredID = NONE; // the smallest element hovered
-    u32 focusedID = NONE; // the smallest element pressed
+
+    struct Link { UIRef parent = UIRef::EMPTY, sibling = UIRef::EMPTY, child = UIRef::EMPTY; };
+    Vec<Link> links;
+
+    Vec<Str> debugNames;
+
+    UIRef hoveredID = UIRef::EMPTY; // the smallest element hovered
+    UIRef focusedID = UIRef::EMPTY; // the smallest element pressed
+    UIRef firstEmptySlot = UIRef::EMPTY;
+
+    float globalScrollDelta = 0;
+    fv2 globalClickPos;
 
     UIDoc(const fRect2D& root);
 private:
@@ -186,19 +211,25 @@ private:
 public:
     UIRect& Root();
 
-    u32 GetIDFor(const UIRect& u) const;
-    UIRef Add(const UIRect& u);
-    UIRef AddChild(u32 i, const UIRect& child);
+    UIRef AddChild(UIRef i, const UIRect& child, Str name);
+
+    UIRef TryReviveSlot(); // reserves a slot for putting a new element
+    UIRef AddDirect(const UIRect& child);
+
+    void JoinToDeadLinkedList(UIRef first, UIRef last);
+    void Kill(UIRef i); // adds i to the `destroyed` linked list
+    void KillAllAfterSibling(UIRef sib);
+    void KillAllChildren(UIRef parent);
+    void TruncChildren(UIRef parent, u32 n);
 
     void SetRect(const fRect2D& rect);
 
-    void ComputeLayout();
+    void ComputeLayout(UIRef rootNode = UIRef::ROOT);
     void CheckMouseStates(const fv2& mouse, bool pressed, bool clicked, float scroll);
     void DrawDebug(Canvas& canvas);
 
-    u32 SiblingOf(u32 x);
-    u32 ChildOf(u32 x);
-    u32 ParentOf(u32 x);
+    Str DebugNameOf(UIRef i) const;
+    void PrettyPrintStructure() const;
 
     inline static OptRef<UIDoc> Instance = nullptr;
 

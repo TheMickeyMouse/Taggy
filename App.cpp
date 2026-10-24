@@ -30,9 +30,11 @@ App::App(int w, int h)
     }
 
     // Track::Load(track, "Resonance - Home.mp3", false);
-    playlist = Playlist::Load("D:\\Music\\Wrangled-Out", 4);
+    playlist = Playlist::Load("D:\\Music\\Wrangled-Out");
     currentTrack = playlist.tracks[0];
     currentTrack->LoadSoundIntoMemory();
+
+    uDoc.PrettyPrintStructure();
 }
 
 App::~App() {
@@ -62,10 +64,11 @@ void App::OnScreenResize() {
     // ui handling
     uDoc.SetRect({ 0, (fv2)windowSize });
     uDoc.ComputeLayout();
+    uPlaylistView.OnLayoutChange();
 }
 
 void App::Update() {
-    if (gd.GetWindowSize() != windowSize) { // resize happened
+    if (gd.GetWindowSize() != windowSize && gd.GetWindowPos().AllGreater(-16000)) { // resize happened, dont count minimized states
         OnScreenResize();
     }
 }
@@ -78,6 +81,8 @@ bool App::Run() {
 
     if (glfwGetWindowAttrib(gd.GetWindow(), GLFW_FOCUSED)) {
         gd.PollEvents();
+
+        uPlaylistView.Update();
     }
 
     if (!IsWindowMinimized()) {
@@ -95,10 +100,10 @@ bool App::Run() {
         canvas.Fill(0x272b34_rgb);
         canvas.DrawRect({ 0, { Width(), Height() } });
 
-        uTitlebar.Draw(canvas);
-        uSidebar.Draw(canvas);
-        uMusic.Draw(canvas, currentTrack);
-        uPlaybar.Draw(canvas, currentTrack, io);
+        uTitlebar    .Draw(canvas);
+        uSidebar     .Draw(canvas);
+        uMusic       .Draw(canvas, currentTrack);
+        uPlaybar     .Draw(canvas, currentTrack, io);
         uPlaylistView.Draw(canvas, playlist);
 
         debugMode ^= io["I"].OnPress() && io.Shift();
@@ -111,12 +116,14 @@ bool App::Run() {
                     "LClick = {}; "
                     "Mouse = {}; "
                     "FPS = {}; "
-                    "MouseDown = {}",
+                    "MouseDown = {}; "
+                    "Hovering = '{}'",
                     gd.GetWindowPos(), gd.GetWindowSize().x, gd.GetWindowSize().y,
                     io.LeftMouse().ClickedPos(),
                     io.GetMousePos(),
                     std::llround(io.Framerate()),
-                    io.LeftMouse().Pressed()
+                    io.LeftMouse().Pressed(),
+                    uDoc.DebugNameOf(uDoc.hoveredID)
                 ),
                 11.0f,
                 { 0, Height() },
@@ -124,6 +131,10 @@ bool App::Run() {
             );
 
             uDoc.DrawDebug(canvas);
+        }
+
+        if (io[IO::Key::P].OnPress() && io.Shift()) {
+            uDoc.PrettyPrintStructure();
         }
 
         if (io[IO::Key::SPACE].OnPress()) {

@@ -7,10 +7,10 @@ public:
     UIRef uRoot, uCover, uInfo;
     UIRef uInfoTitle, uInfoArtist;
 
-    static constexpr float PADDING = 10;
+    static constexpr float HEIGHT = 80, PADDING = 10, FULL_HEIGHT = HEIGHT + PADDING;
 
-    SongView() = default;
-    SongView(UIRect& root);
+    static SongView Infer(UIRect& root);
+    static void AddView(UIRect& container);
 
     void Draw(Canvas& canvas, Track& track);
 };
@@ -18,15 +18,14 @@ public:
 class PlaylistView {
 public:
     UIRef uRoot, uTitle, uTracks;
-
+    int numShownTracks = 0;
     float yPosition = 0;
 
     static constexpr float PADDING = 20;
-    static constexpr int PAGE = 5;
-
-    SongView uSongs[PAGE];
 
     PlaylistView(UIRect& root);
 
+    void Update();
+    void OnLayoutChange();
     void Draw(Canvas& canvas, Playlist& playlist);
 };

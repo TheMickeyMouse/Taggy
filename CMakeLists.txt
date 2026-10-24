@@ -38,4 +38,3 @@ add_executable(Taggy main.cpp
         PlaylistView.cpp
         PlaylistView.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)
-target_compile_options(Taggy PUBLIC -Os -DNDEBUG -Wno-maybe-uninitialized)

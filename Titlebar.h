@@ -1,6 +1,8 @@
 #pragma once
 #include "UIRect.h"
 
+class App;
+
 class Titlebar {
     UIRef uRoot, uCloseBtn, uMaximizeBtn, uMinimizeBtn;
 public:

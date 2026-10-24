@@ -4,25 +4,25 @@
 #include "Track.h"
 
 Playbar::Playbar(UIRect& root, Canvas& canvas)
-    : uRoot(root.Pack(Dir::BTM, HEIGHT * Length::PX, { .padding = PADDING })),
-      uCover        (uRoot->Pack(Dir::LEFT,  1.0_fh,  { .margin = {{ .right = PADDING * 0.6f }} })),
-      uInfo         (uRoot->Pack(Dir::LEFT,  0.2_per, { .margin = {{ .right = PADDING }}, .centerY = true })),
+    : uRoot(root.Pack(Dir::BTM, HEIGHT * Length::PX, "pb", { .padding = PADDING })),
+      uCover        (uRoot->Pack(Dir::LEFT,  1.0_fh,  "pb.Cover", { .margin = {{ .right = PADDING * 0.6f }} })),
+      uInfo         (uRoot->Pack(Dir::LEFT,  0.2_per, "pb.Info", { .margin = {{ .right = PADDING }}, .centerY = true })),
       uControlsExtra(
-          (uRoot->Pack(Dir::RIGHT, 1.0_fh,  { .margin = {{ .left = PADDING * 0.6f }} }),
-           uRoot->Pack(Dir::RIGHT, 0.2_per, { .margin = {{ .left = PADDING }} }))
+          (uRoot->Pack(Dir::RIGHT, 1.0_fh,  "pb.space", { .margin = {{ .left = PADDING * 0.6f }} }),
+           uRoot->Pack(Dir::RIGHT, 0.2_per, "pb.ControlsExtra", { .margin = {{ .left = PADDING }} }))
       ),
-      uControls(uRoot->Pack(Dir::TOP, 1.0_per, { .centerX = true })),
+      uControls(uRoot->Pack(Dir::TOP, 1.0_per, "pb.Controls", { .centerX = true })),
 
-      uInfoTitle (uInfo->Pack(Dir::TOP, 0.32_per, { .margin = {{ .btm = PADDING * 0.3f }} })),
-      uInfoArtist(uInfo->Pack(Dir::TOP, 0.24_per)),
+      uInfoTitle (uInfo->Pack(Dir::TOP, 0.32_per, "pb.InfoTitle", { .margin = {{ .btm = PADDING * 0.3f }} })),
+      uInfoArtist(uInfo->Pack(Dir::TOP, 0.24_per, "pb.InfoArtist")),
 
-      uDurationBar(uControls->Pack(Dir::BTM, PROGRESS_BAR_THICKNESS * Length::PX, { .margin = {{ .top = PROGRESS_BAR_THICKNESS }} })),
-      uPrevBtn(uControls->Pack(Dir::LEFT, 0.2_per, { .margin = {{ .top = PADDING * 0.6f, .right = PADDING, .btm = PADDING * 0.9f }} })),
-      uPlayBtn(uControls->Pack(Dir::LEFT, 0.2_per, { .margin = {{ .top = PADDING * 0.3f, .right = PADDING, .btm = PADDING * 0.7f }} })),
-      uNextBtn(uControls->Pack(Dir::LEFT, 0.2_per, { .margin = {{ .top = PADDING * 0.6f, .btm = PADDING * 0.9f }} })),
+      uDurationBar(uControls->Pack(Dir::BTM, PROGRESS_BAR_THICKNESS * Length::PX, "pb.DurationBar", { .margin = {{ .top = PROGRESS_BAR_THICKNESS }} })),
+      uPrevBtn(uControls->Pack(Dir::LEFT, 0.2_per, "pb.PrevBtn", { .margin = {{ .top = PADDING * 0.6f, .right = PADDING, .btm = PADDING * 0.9f }} })),
+      uPlayBtn(uControls->Pack(Dir::LEFT, 0.2_per, "pb.PlayBtn", { .margin = {{ .top = PADDING * 0.3f, .right = PADDING, .btm = PADDING * 0.7f }} })),
+      uNextBtn(uControls->Pack(Dir::LEFT, 0.2_per, "pb.NextBtn", { .margin = {{ .top = PADDING * 0.6f, .btm = PADDING * 0.9f }} })),
 
       // <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>,
-      vPlay (Icon::FromCode({ 0, 24 }, canvas, [] (Canvas& c) {
+      vPlay(Icon::FromCode({ 0, 24 }, canvas, [] (Canvas& c) {
           c.StrokeWeight(1);
           c.Fill(1);
           c.DrawTriangle({ 7, 5 }, { 19, 12 }, { 7, 19 });
@@ -72,9 +72,9 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
 
     QWith$(uControls->BeginDraw(canvas)) {
         Icon* icons[] = { &vPrev, track.isPlaying ? &vPause : &vPlay, &vNext };
-        for (const auto [i, child] : Iter::Enumerate(uControls->Children())) QWith$(child.BeginDraw(canvas)) {
+        for (const auto [i, child] : Iter::Enumerate(uControls.Children())) QWith$(child->BeginDraw(canvas)) {
             if (i == 0) continue;
-            const fv2 s = child.GetInnerRect().Size(),
+            const fv2 s = child->GetInnerRect().Size(),
                       h = s.y / icons[i - 1]->viewBox.Size();
 
             const bool isPlayBtn = i == 2;
@@ -83,14 +83,14 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
                 canvas.Fill(WHITE);
                 canvas.DrawCircle(s * 0.5f, s.y * 0.7f);
             }
-            canvas.DrawMesh(icons[i - 1]->mesh, { (s.x - s.y) / 2, child.padding.top }, h, isPlayBtn ? BACKGROUND : WHITE);
+            canvas.DrawMesh(icons[i - 1]->mesh, { (s.x - s.y) / 2, child->padding.top }, h, isPlayBtn ? BACKGROUND : WHITE);
         }
 
-        if (uPlayBtn->onClick) {
+        if (uPlayBtn->GetState(UIRect::CLICKED)) {
             track.Toggle();
         }
-        if (uDurationBar->isMousePressed) {
-            const float fraction = std::clamp(uDurationBar->clickPos.x / uDurationBar->rect.Width(), 0.0f, 1.0f);
+        if (uDurationBar->GetState(UIRect::PRESSED)) {
+            const float fraction = std::clamp(uDurationBar->ClickPos().x / uDurationBar->rect.Width(), 0.0f, 1.0f);
             requestedMusicSeek = track.durationSec * fraction;
         } else if (requestedMusicSeek) { // not pressed but seek requested
             track.SeekTo(*requestedMusicSeek);
@@ -102,7 +102,7 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
             const float y = uDurationBar->rect.Height() / 2.0f,
                         w = uDurationBar->rect.Width(),
                         x = w * (trackPlayedSeconds / track.durationSec);
-            const bool active = uDurationBar->isHovered;
+            const bool active = uDurationBar->GetState(UIRect::HOVERED);
 
             canvas.StrokeWeight(active ? 1.3f * y : y);
             canvas.Stroke(DARK_GRAY);

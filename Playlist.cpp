@@ -1,13 +1,20 @@
 #include "Playlist.h"
 
-Playlist Playlist::Load(CStr path, int pageNum) {
+Playlist Playlist::Load(CStr path) {
     Playlist playlist { .folderPath = path.Data() };
 
+    [[maybe_unused]] const Debug::Timer timer { "fetching all files in directory", Debug::Logger::GetInternalLog() };
+
     for (const auto& file : std::filesystem::directory_iterator(playlist.folderPath)) {
-        playlist.tracks.ResizeExtraDefault(1);
-        Track::Load(playlist.tracks.Last(), file.path(), true);
-        if (playlist.tracks.Length() >= pageNum) break;
+        playlist.tracks.Push(Track::UnloadedFromFile(file.path()));
     }
 
     return playlist;
+}
+
+OptRef<Track> Playlist::Request(int i) {
+    if (auto t = tracks.TryGet(i)) {
+        if (!t->loaded) Track::Load(*t, true);
+        return t;
+    } else return nullptr;
 }

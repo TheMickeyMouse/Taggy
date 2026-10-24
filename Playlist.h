@@ -5,5 +5,7 @@ struct Playlist {
     Path folderPath;
     Vec<Track> tracks;
 
-    static Playlist Load(CStr path, int pageNum);
+    static Playlist Load(CStr path);
+
+    OptRef<Track> Request(int i);
 };

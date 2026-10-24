@@ -2,7 +2,7 @@
 #include "Utils/Iter/Map.h"
 
 Sidebar::Sidebar(UIRect& root, Canvas& canvas)
-    : uRoot(root.Pack(Dir::LEFT, (INNER_WIDTH + PADDING * 2) * Length::PX, { .padding = PADDING })) {
+    : uRoot(root.Pack(Dir::LEFT, (INNER_WIDTH + PADDING * 2) * Length::PX, "sb", { .padding = PADDING })) {
 
     labels.Push({ "Home",     Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>)", canvas) });
     labels.Push({ "Library",  Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 6 4 14"/><path d="M12 6v14"/><path d="M8 8v12"/><path d="M4 4v16"/></svg>)", canvas) });
@@ -12,7 +12,7 @@ Sidebar::Sidebar(UIRect& root, Canvas& canvas)
     labels.Push({ "Settings", Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>)", canvas) });
 
     for (auto& _ : labels) {
-        uRoot->Pack(Dir::TOP, 1.0_fw);
+        uRoot->Pack(Dir::TOP, 1.0_fw, "sb.Btn#");
     }
 
     // Debug::QInfo$("{} triangles in {} icons", labels.Iter().Map([] (const auto& m) { return m.icon.mesh.indices.Length(); }).Reduce(Operators::Add {}, 0), labels.Length());
@@ -48,18 +48,19 @@ void Sidebar::Draw(Canvas& canvas) {
     canvas.NoFill();
     canvas.Stroke(LIGHT_GRAY);
 
-    for (const auto [i, u] : Iter::Enumerate(uRoot->Children())) {
+    for (const auto [i, u] : Iter::Enumerate(uRoot.Children())) {
         auto& [name, icon, vActive] = labels[i];
 
         // experimental:
         // u->length = (1.0f + 0.5f * vActive.displayValue) * Length::FW;
 
-        [[maybe_unused]] const auto _2 = u.BeginDraw(canvas);
+        [[maybe_unused]] const auto _2 = u->BeginDraw(canvas);
 
-        const float y = u.rect.Height() / 2.0f, h = y * (2.0f + 0.4f * vActive.displayValue);
+        const float y = u->rect.Height() / 2.0f, h = y * (2.0f + 0.4f * vActive.displayValue);
 
-        vActive.Set(u.isHovered);
-        if (u.isHovered) {
+        const bool hov = u->GetState(UIRect::HOVERED);
+        vActive.Set(hov);
+        if (hov) {
             vSelectedIndex.Set(i);
             if (!vHasSelected.target) vSelectedIndex.Jump();
         }
@@ -74,5 +75,5 @@ void Sidebar::Draw(Canvas& canvas) {
         canvas.Stroke(highlightColor);
         canvas.DrawText(name, h * 0.5f, { h, 0 }, { TextAlign::LEFT | TextAlign::CLIP, { t * 150.0f, y * 2.0f } });
     }
-    vHasSelected.target = uRoot->isChildrenHovered;
+    vHasSelected.target = uRoot->GetState(UIRect::HOVERED | UIRect::CHILDREN_INVOLVED);
 }

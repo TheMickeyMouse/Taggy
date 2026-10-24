@@ -4,10 +4,10 @@
 #include "Quasi/Dependencies/GLFW/include/GLFW/glfw3.h"
 
 Titlebar::Titlebar(UIRect& root)
-    : uRoot(root.Pack(Dir::TOP, HEIGHT * Length::PX)),
-      uCloseBtn   (uRoot->Pack(Dir::RIGHT, 1.0_fh)),
-      uMaximizeBtn(uRoot->Pack(Dir::RIGHT, 1.0_fh)),
-      uMinimizeBtn(uRoot->Pack(Dir::RIGHT, 1.0_fh))
+    : uRoot       (root  .Pack(Dir::TOP, HEIGHT * Length::PX, "ttb")),
+      uCloseBtn   (uRoot->Pack(Dir::RIGHT, 1.0_fh, "ttb.CloseBtn")),
+      uMaximizeBtn(uRoot->Pack(Dir::RIGHT, 1.0_fh, "ttb.MaximizeBtn")),
+      uMinimizeBtn(uRoot->Pack(Dir::RIGHT, 1.0_fh, "ttb.MinimizeBtn"))
 {}
 
 void Titlebar::Draw(Canvas& canvas) {
@@ -18,8 +18,9 @@ void Titlebar::Draw(Canvas& canvas) {
         [[maybe_unused]] const auto _2 = btn->BeginDraw(canvas);
         canvas.transform.scale = btn->rect.Width();
 
-        canvas.Fill(btn->isHovered ? (btn == uCloseBtn ? RED : DARK_GRAY) : BACKGROUND);
-        if (btn->isHovered) {
+        const bool hov = btn->GetState(UIRect::HOVERED);
+        canvas.Fill(hov ? (btn == uCloseBtn ? RED : DARK_GRAY) : BACKGROUND);
+        if (hov) {
             canvas.NoStroke();
             canvas.DrawRect({ 0, 1 });
         }
@@ -28,7 +29,7 @@ void Titlebar::Draw(Canvas& canvas) {
         canvas.StrokeWeight(0.5f / canvas.transform.scale.x);
 
         if (btn == uCloseBtn) { // x icon (close)
-            if (btn->isHovered) canvas.Stroke(1);
+            if (hov) canvas.Stroke(1);
             canvas.DrawLine(0.4, 0.6);
             canvas.DrawLine({ 0.6, 0.4 }, { 0.4, 0.6 });
         } else if (btn == uMaximizeBtn) { // double square icon (maximize)

@@ -5,10 +5,10 @@
 #include "Track.h"
 
 MusicDisplay::MusicDisplay(UIRect& root)
-     : uRoot  (root.Pack(Dir::RIGHT, Length::Min(WIDTH_PER * Length::FW, 0.5f * Length::FH), { .padding = PADDING, .margin = {{ .left = PADDING }} })),
-       uCover (uRoot->Pack(Dir::TOP, 1.0_fw, { .margin = {{ .btm = PADDING / 2 }} })),
-       uTitle (uRoot->Pack(Dir::TOP, TITLE_HEIGHT * Length::PX, { .margin = {{ .btm = PADDING / 4 }} })),
-       uArtist(uRoot->Pack(Dir::TOP, ARTIST_HEIGHT * Length::PX))
+     : uRoot  (root  .Pack(Dir::RIGHT, Length::Min(WIDTH_PER, 0.5_fh), "md", { .padding = PADDING, .margin = {{ .left = PADDING }} })),
+       uCover (uRoot->Pack(Dir::TOP, 1.0_fw,                     "md.Cover", { .margin = {{ .btm = PADDING / 2 }} })),
+       uTitle (uRoot->Pack(Dir::TOP, TITLE_HEIGHT * Length::PX,  "md.Title", { .margin = {{ .btm = PADDING / 4 }} })),
+       uArtist(uRoot->Pack(Dir::TOP, ARTIST_HEIGHT * Length::PX, "md.Artist"))
 {}
 
 void MusicDisplay::Draw(Canvas& canvas, const Track& track) {

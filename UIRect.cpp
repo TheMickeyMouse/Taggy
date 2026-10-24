@@ -1,6 +1,7 @@
 #include "UIRect.h"
 
 #include "App.h"
+#include "glp.h"
 #include "Utils/Debug/Logger.h"
 
 float& Dirs::GetBound(fRect2D& r, Dir side) {
@@ -140,72 +141,81 @@ fRect2D Sides::Expand(const fRect2D& rect) const {
     };
 }
 
-UIRef::operator UIRect&() {
+UIRef::UIRef(UIRect& r) : i(r.self) {}
+
+UIRef::operator UIRect&() const {
     return (*UIDoc::Instance)[i];
 }
-
-UIRef::operator const UIRect&() const {
+UIRect& UIRef::operator*() const {
     return (*UIDoc::Instance)[i];
 }
-
-UIRect& UIRef::operator*() {
-    return (*UIDoc::Instance)[i];
-}
-
-const UIRect& UIRef::operator*() const {
-    return (*UIDoc::Instance)[i];
-}
-
-UIRect* UIRef::operator->() {
+UIRect* UIRef::operator->() const {
     return &(*UIDoc::Instance)[i];
 }
 
-const UIRect* UIRef::operator->() const {
-    return &(*UIDoc::Instance)[i];
+UIRef::operator bool() const {
+    return i != EMPTY;
+}
+
+UIRef::operator unsigned() const {
+    return i;
+}
+
+UIRef UIRef::Sibling() const {
+    return UIDoc::Instance->links[i].sibling;
+}
+
+UIRef UIRef::Child() const {
+    return UIDoc::Instance->links[i].child;
+}
+
+UIRef UIRef::Parent() const {
+    return UIDoc::Instance->links[i].parent;
+}
+
+UISiblingIter UIRef::Siblings() const {
+    return { Sibling() };
+}
+
+UISiblingIter UIRef::Children() const {
+    return { Child() };
+}
+
+void UIRef::Kill() const {
+    UIDoc::Instance->Kill(*this);
+}
+
+void UIRef::TruncChildren(u32 n) const {
+    UIDoc::Instance->TruncChildren(*this, n);
+}
+
+void UIRect::SetState(int state, bool val) {
+    mouseStates &= ~state;
+    mouseStates |= val ? state : 0;
+}
+
+bool UIRect::GetState(int state) const {
+    return (mouseStates & state) == state;
+}
+
+void UIRect::ClearMouseStates() {
+    mouseStates = 0;
+}
+
+float UIRect::ScrollDelta() const {
+    return UIDoc::Instance->globalScrollDelta;
+}
+
+fv2 UIRect::ClickPos() const {
+    return UIDoc::Instance->globalClickPos - rect.BottomLeft();
+}
+
+const UIRef* UIRect::operator->() const {
+    return &self;
 }
 
 UIRect UIRect::Root(const fRect2D& root, UIDoc& doc) {
     return { .rect = root };
-}
-
-OptRef<UIRect> UIRect::Sibling() {
-    return (*UIDoc::Instance)[siblingID];
-}
-
-OptRef<UIRect> UIRect::Child() {
-    return (*UIDoc::Instance)[childID];
-}
-
-OptRef<UIRect> UIRect::Parent() {
-    return (*UIDoc::Instance)[parentID];
-}
-
-OptRef<const UIRect> UIRect::Sibling() const {
-    return (*UIDoc::Instance)[siblingID];
-}
-
-OptRef<const UIRect> UIRect::Child() const {
-    return (*UIDoc::Instance)[childID];
-}
-
-OptRef<const UIRect> UIRect::Parent() const {
-    return (*UIDoc::Instance)[parentID];
-}
-
-bool UIRect::HasSiblings() const {
-    return siblingID != ~0;
-}
-
-bool UIRect::HasChildren() const {
-    return childID != ~0;
-}
-
-UISiblingIter UIRect::Siblings() {
-    return { Sibling() };
-}
-
-UISiblingIter UIRect::Children() {
-    return { Child() };
 }
 
 void UIRect::DrawDebug(Canvas& canvas) {
@@ -218,8 +228,8 @@ void UIRect::DrawDebug(Canvas& canvas) {
 
     canvas.NoStroke();
 
-    if (isMousePressed) {
-        canvas.Fill(DBG_CENTER_PRESSED_COLOR.AddAlpha(onClick ? 0.4f : 0.2f));
+    if (mouseStates & PRESSED) {
+        canvas.Fill(DBG_CENTER_PRESSED_COLOR.AddAlpha(mouseStates & CLICKED ? 0.4f : 0.2f));
     } else {
         canvas.Fill(DBG_CENTER_COLOR.AddAlpha(0.2f));
     }
@@ -240,13 +250,16 @@ void UIRect::DrawDebug(Canvas& canvas) {
         DBG_FNT_SIZE, center.BottomLeft(), { TextAlign::LEFT | TextAlign::VBOTTOM });
 }
 
-void UIRect::ClearMouseStates() {
-    isHovered              =
-    isChildrenHovered      =
-    isMousePressed         =
-    isChildrenMousePressed =
-    onClick                =
-    onChildrenClick        = false;
+void UIRect::ComputeLayout() {
+    UIDoc::Instance->ComputeLayout(self);
+}
+
+void UIRect::MarkDestroyed() {
+    valid = false;
+}
+
+bool UIRect::IsValid() const {
+    return valid;
 }
 
 fRect2D UIRect::GetInnerRect() const {
@@ -257,16 +270,15 @@ fv2 UIRect::RelativePos(const fv2& p) const {
     return p - rect.BottomLeft();
 }
 
-UIRef UIRect::Pack(Dir childSide, Length childLen, const UIRectOptions& options) {
-    const u32 id = UIDoc::Instance->GetIDFor(*this);
-    return UIDoc::Instance->AddChild(id, UIRect {
-        .length = childLen,
+UIRef UIRect::Pack(Dir childSide, Length childLen, Str name, const UIRectOptions& options) {
+    return UIDoc::Instance->AddChild(self, UIRect {
         .padding = options.padding,
         .margin = options.margin,
+        .length = childLen,
         .side = childSide,
         .centerChildrenX = options.centerX,
         .centerChildrenY = options.centerY,
-    });
+    }, name);
 }
 
 void UIRect::Background(Canvas& c, const fColor& color, float border) {
@@ -342,12 +354,12 @@ void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOpt
     c.DrawText(text, size.y, 0, { align, size });
 }
 
-UIRect& UISiblingIter::CurrentImpl() const {
-    return (UIRect&)*current;
+UIRef UISiblingIter::CurrentImpl() const {
+    return current;
 }
 
 void UISiblingIter::AdvanceImpl() {
-    current = current->Sibling();
+    current = current.Sibling();
 }
 
 bool UISiblingIter::CanNextImpl() const {
@@ -356,6 +368,8 @@ bool UISiblingIter::CanNextImpl() const {
 
 UIDoc::UIDoc(const fRect2D& root) {
     elements.Push(UIRect::Root(root, *this));
+    links.Push({});
+    debugNames.Push("[root]");
     Instance = *this;
 }
 
@@ -364,53 +378,141 @@ UIRect& UIDoc::operator[](u32 i) {
 }
 
 UIRect& UIDoc::Root() {
-    return elements[UIRect::ROOT];
+    return elements[UIRef::ROOT];
 }
 
-u32 UIDoc::GetIDFor(const UIRect& u) const {
-    return elements.AsSpan().Unaddress(&u);
-}
+UIRef UIDoc::AddChild(UIRef i, const UIRect& child, Str name) {
+    const UIRef childID = AddDirect(child);
 
-UIRef UIDoc::Add(const UIRect& u) {
-    const u32 i = elements.Length();
-    elements.Push(u);
-    return { i };
-}
+    links[(u32)childID] = { .parent = i, .sibling = UIRef::EMPTY, .child = UIRef::EMPTY };
 
-UIRef UIDoc::AddChild(u32 i, const UIRect& child) {
-    const u32 childID = elements.Length();
-    UIRect& newChild = elements.Push(child);
-    UIRect& parent = elements[i];
-
-    newChild.parentID = i;
-
-    if (parent.HasChildren()) {
-        u32 lastChild = parent.childID, next;
-        while ((next = SiblingOf(lastChild)) != UIRect::EMPTY) lastChild = next;
-        elements[lastChild].siblingID = childID;
+    if (i.Child()) {
+        UIRef lastChild = i.Child(), next;
+        while ((next = lastChild.Sibling())) lastChild = next;
+        links[(u32)lastChild].sibling = childID; // make `childID` the sibling of the last child of `i`
     } else {
-        parent.childID = childID;
+        links[(u32)i].child = childID; // make `childID` the child of `i`
     }
 
+    debugNames[(u32)childID] = name;
+
     return { childID };
+}
+
+UIRef UIDoc::TryReviveSlot() {
+    if (!firstEmptySlot) return UIRef::EMPTY;
+
+    const UIRef freeSlot = firstEmptySlot;
+    firstEmptySlot = freeSlot.Sibling();
+
+    return freeSlot;
+}
+
+UIRef UIDoc::AddDirect(const UIRect& child) {
+    UIRef slot = TryReviveSlot();
+    if (slot) {
+        (*slot = child).self = slot;
+    } else {
+        slot = elements.Length();
+        elements.Push(child).self = slot;
+        links.Push({});
+        debugNames.Push({});
+    }
+    return slot;
+}
+
+void UIDoc::JoinToDeadLinkedList(UIRef first, UIRef last) {
+    links[(u32)last].sibling = firstEmptySlot;
+    firstEmptySlot = first;
+}
+
+void UIDoc::Kill(UIRef i) {
+    if (!i->IsValid()) return;
+    i->MarkDestroyed();
+    JoinToDeadLinkedList(i, i);
+}
+
+void UIDoc::KillAllAfterSibling(UIRef sib) {
+    if (!sib) return;
+    // R
+    // ├─ A
+    // │  ├─ A1
+    // │  ├─ A2
+    // │  │  ├── A2.1
+    // │  │  └── A2.2
+    // │  └─ A3
+    // │     └── A3.1
+    // ├─ B
+    // └─ C
+    // (sib is A) needs to become linked list of A -> A1 -> A2 -> A2.1 -> A2.2 -> A3 -> A3.1 -> B -> C
+    const UIRef first = sib, commonParent = sib.Parent();
+    UIRef last;
+
+    PrettyPrintStructure();
+    while (true) {
+        sib->MarkDestroyed();
+        if (sib.Child()) {
+            // venture deeper
+            // remember afterwards one needs to
+            //      1. join sib to sib.child as siblings
+            //      2. join sib's last child (A3.1) to the next one (B)
+            //      3. continue onward by moving back to sib (parent)'s sibling
+            sib = sib.Child();
+            continue;
+        }
+
+        if (sib.Sibling()) {
+            sib = sib.Sibling(); // no reattaching needed
+        } else { // end of the road; go back
+            last = sib;
+
+            UIRef outerSibling;
+            do {
+                if (sib.Parent() == commonParent) goto exit; // all siblings under `commonParent` explored; halt
+                sib = sib.Parent();
+
+                // perform the steps mentioned above
+                outerSibling = sib.Sibling();
+                links[(u32)sib].sibling = sib.Child();
+            } while (!outerSibling); // need to find sibling to iterate to
+
+            sib = outerSibling;
+            links[(u32)last].sibling = sib; // attach A3.1 to B
+        }
+    }
+    exit:
+    JoinToDeadLinkedList(first, last);
+}
+
+void UIDoc::KillAllChildren(UIRef parent) {
+    KillAllAfterSibling(parent.Child());
+    links[(u32)parent].child = UIRef::EMPTY;
+}
+
+void UIDoc::TruncChildren(UIRef parent, u32 n) {
+    if (n == 0) KillAllChildren(parent);
+
+    UISiblingIter it = parent.Children();
+    it.AdvanceBy(n - 1);
+    KillAllAfterSibling((*it).Sibling());
+    links[(u32)*it].sibling = UIRef::EMPTY;
 }
 
 void UIDoc::SetRect(const fRect2D& rect) {
     Root().rect = rect;
 }
 
-void UIDoc::ComputeLayout() {
-    Vec<u32> queue;
-    queue.Push(UIRect::ROOT);
+void UIDoc::ComputeLayout(UIRef rootNode) {
+    Vec<UIRef> queue;
+    queue.Push(rootNode);
 
-    while (auto currentID = queue.TryTake()) {
-        // Debug::QInfo$("eval {}", *currentID);
-        UIRect& curr = elements[*currentID];
+    while (auto currID = queue.TryTake()) {
+        UIRect& curr = **currID;
 
         fRect2D remainingSpace = curr.padding.Shrink(curr.rect);
-        u32 currentStackSize = queue.Length();
-        for (u32 i = curr.childID; i != UIRect::EMPTY; i = SiblingOf(i)) {
-            UIRect& child = elements[i];
+        const u32 currentStackSize = queue.Length();
+        for (UIRef i = currID->Child(); i; i = i.Sibling()) {
+            UIRect& child = *i;
             // calc the length in the direction of the axis `child.side`
             const float len = child.length.Resolve(curr, remainingSpace, child.side);
             const float marginExtra = child.margin.GetSide(Dirs::Opposite(child.side));
@@ -421,12 +523,13 @@ void UIDoc::ComputeLayout() {
         }
         if (queue.Length() != currentStackSize) queue.Skip(currentStackSize).Reverse();
 
-        if ((curr.centerChildrenX || curr.centerChildrenY) && curr.HasChildren()) {
+        if ((curr.centerChildrenX || curr.centerChildrenY) && currID->Child()) {
             const fv2 offset = {
                 curr.centerChildrenX ? remainingSpace.Width() / 2 : 0,
                 curr.centerChildrenY ? remainingSpace.Height() / 2 : 0,
             };
-            for (UIRect& child : curr.Children()) {
+            for (UIRef i : curr->Children()) {
+                UIRect& child = *i;
                 if ((curr.centerChildrenX && Dirs::IsX(child.side)) || (curr.centerChildrenY && Dirs::IsY(child.side))) {
                     child.rect = child.rect.Move(offset);
                 }
@@ -437,65 +540,91 @@ void UIDoc::ComputeLayout() {
 
 void UIDoc::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked, float scroll) {
     // Root().CheckMouseStates(mouse, pressed, clicked, scroll);
+    globalScrollDelta = scroll;
+    globalClickPos = mouse;
 
     for (auto& e : elements) e.ClearMouseStates();
 
     // keep focused elements focused, even if the mouse leaves the hitbox, as long as the mouse is still pressed
-    if (focusedID != UIRect::EMPTY && pressed) {
-        UIRect& focus = elements[focusedID];
-        focus.isMousePressed = pressed;
-        focus.clickPos = mouse - focus.rect.BottomLeft();
+    if (focusedID && pressed) {
+        focusedID->SetState(UIRect::PRESSED, pressed);
     } else {
-        focusedID = UIRect::EMPTY;
+        focusedID = UIRef::EMPTY;
     }
 
     // next is always a child of search
-    u32 search = UIRect::ROOT, next = UIRect::ROOT;
-    while (next != UIRect::EMPTY) {
-        UIRect& curr = elements[next];
+    UIRef search = UIRef::ROOT, next = UIRef::ROOT;
+    while (next) {
+        UIRect& curr = *next;
 
         if (curr.rect.Contains(mouse)) { // search deeper
-            curr.isHovered = true;
-            curr.onClick = clicked;
+            curr.SetState(UIRect::HOVERED, true);
+            curr.SetState(UIRect::CLICKED, clicked);
             // when ur mouse is held and hoveres over a ui elm,
             // without this check it would register as a mouse press (we dont want this)
             // should only trigger when the mouse is pressed inside the elm to begin with
-            curr.isMousePressed = curr.isMousePressed ? pressed : clicked;
-            if (curr.isMousePressed) focusedID = next;
-            if (pressed) curr.clickPos = mouse - curr.rect.BottomLeft();
-            curr.scrollDelta = scroll;
+            curr.SetState(UIRect::PRESSED, curr.GetState(UIRect::PRESSED) ? pressed : clicked);
+            if (curr.mouseStates & UIRect::PRESSED) focusedID = next;
 
             search = next;
-            next = curr.childID;
+            next = next.Child();
         } else { // search wider
-            next = curr.siblingID;
+            next = next.Sibling();
         }
     }
     // search is the last element hovered; iterate backwards
     hoveredID = search;
-    UIRect& hov = elements[hoveredID];
 
-    const bool isChildPressed = hov.isMousePressed;
-    while ((search = ParentOf(search)) != UIRect::EMPTY) {
-        UIRect& curr = elements[search];
-        curr.isChildrenHovered = true;
-        curr.isChildrenMousePressed = isChildPressed;
+    while ((search = search.Parent())) {
+        search->SetState(UIRect::CHILDREN_INVOLVED, true);
     }
 }
 
 void UIDoc::DrawDebug(Canvas& canvas) {
-    if (hoveredID == UIRect::EMPTY) return;
-    elements[hoveredID].DrawDebug(canvas);
+    if (!hoveredID) return;
+    hoveredID->DrawDebug(canvas);
 }
 
-u32 UIDoc::SiblingOf(u32 x) {
-    return elements[x].siblingID;
+Str UIDoc::DebugNameOf(UIRef i) const {
+    return debugNames[(u32)i];
 }
 
-u32 UIDoc::ChildOf(u32 x) {
-    return elements[x].childID;
-}
+void UIDoc::PrettyPrintStructure() const {
+    Vec<Tuple<UIRef, u32, u32>> queue;
+    queue.Push({ UIRef::ROOT, 0, 0 });
 
-u32 UIDoc::ParentOf(u32 x) {
-    return elements[x].parentID;
+    Debug::QDebug$("dumping ui structure ({} nodes total; {} bytes):", elements.Length(), elements.Length() * (sizeof(UIRect) + sizeof(Link) + sizeof(Str)));
+    constexpr char INDENT_STRING[] = "│  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  │  ";
+    while (auto process = queue.TryTake()) {
+        const auto [currID, nested, childIdx] = *process;
+
+        if (nested > 24) { Debug::QError$("very high nesting! aborting..."); return; }
+
+        if (nested) {
+            Text::Print("{}{}─ ",
+                Str::Slice(INDENT_STRING, Q_STRLIT_LEN("│  ") * (nested - 1)),
+                (const char*)(currID.Sibling() ? "├" : "└")
+            );
+        }
+
+        const Str debugName = DebugNameOf(currID);
+        if (debugName.EndsWith('#')) Text::PrintLn("{}{} [{}]", debugName, childIdx, (u32)currID);
+        else Text::PrintLn("{} [{}]", debugName, (u32)currID);
+
+        const u32 currentStackSize = queue.Length();
+        u32 n = 0;
+        for (UIRef i = currID.Child(); i; i = i.Sibling()) {
+            queue.Push({ i, nested + 1, n++ });
+        }
+        if (queue.Length() != currentStackSize) queue.Skip(currentStackSize).Reverse();
+    }
+    Text::Print("dead list: ");
+    u32 numDead = 0;
+    for (UIRef dead : UISiblingIter(firstEmptySlot)) {
+        Text::Print("{} -> ", (u32)dead);
+        ++numDead;
+    }
+    Text::PrintLn("[end] ({} total).", numDead);
+
+    Debug::QDebug$("finished ui dump");
 }
