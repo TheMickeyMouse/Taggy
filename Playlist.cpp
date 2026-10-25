@@ -1,7 +1,11 @@
 #include "Playlist.h"
 
 Playlist Playlist::Load(CStr path) {
-    Playlist playlist { .folderPath = path.Data() };
+    Playlist playlist {
+        .folderPath = path.Data(),
+        .folderPathCStr = path,
+        .folderNameCStr = path.RevSplitOnceOn(Cmp::Equals { '\\' })[2_nd]
+    };
 
     [[maybe_unused]] const Debug::Timer timer { "fetching all files in directory", Debug::Logger::GetInternalLog() };
 

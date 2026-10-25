@@ -57,8 +57,6 @@ void Playbar::Update(float dt) {
 void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
     [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
 
-    uRoot->Background(canvas, BACKGROUND);
-
     canvas.Fill(BACKGROUND_ALT);
     QWith$(uCover->BeginDraw(canvas)) {
         const fv2 size = uCover->rect.Size();
@@ -86,10 +84,10 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
             canvas.DrawMesh(icons[i - 1]->mesh, { (s.x - s.y) / 2, child->padding.top }, h, isPlayBtn ? BACKGROUND : WHITE);
         }
 
-        if (uPlayBtn->GetState(UIRect::CLICKED)) {
+        if (uPlayBtn->Clicked()) {
             track.Toggle();
         }
-        if (uDurationBar->GetState(UIRect::PRESSED)) {
+        if (uDurationBar->Pressed()) {
             const float fraction = std::clamp(uDurationBar->ClickPos().x / uDurationBar->rect.Width(), 0.0f, 1.0f);
             requestedMusicSeek = track.durationSec * fraction;
         } else if (requestedMusicSeek) { // not pressed but seek requested
@@ -102,7 +100,7 @@ void Playbar::Draw(Canvas& canvas, Track& track, const IO::IO& io) {
             const float y = uDurationBar->rect.Height() / 2.0f,
                         w = uDurationBar->rect.Width(),
                         x = w * (trackPlayedSeconds / track.durationSec);
-            const bool active = uDurationBar->GetState(UIRect::HOVERED);
+            const bool active = uDurationBar->Hovered();
 
             canvas.StrokeWeight(active ? 1.3f * y : y);
             canvas.Stroke(DARK_GRAY);

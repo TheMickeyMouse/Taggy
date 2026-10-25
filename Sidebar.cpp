@@ -30,8 +30,8 @@ void Sidebar::Draw(Canvas& canvas) {
     // side->length.val = std::lerp(side->length.val, side->isHovered ? 80.0f : 60.0f, 0.05f);
 
     const auto _ = uRoot->BeginDraw(canvas);
-    canvas.Fill(BACKGROUND_ALT);
-    canvas.DrawRect({ 0, uRoot->rect.Size() });
+
+    uRoot->Background(canvas, BACKGROUND_ALT, ROUNDING_RADIUS, ROUNDING_RADIUS, 0, 0);
 
     // canvas.Stroke(BACKGROUND);
     // canvas.StrokeWeight(INNER_WIDTH / 2);
@@ -58,7 +58,7 @@ void Sidebar::Draw(Canvas& canvas) {
 
         const float y = u->rect.Height() / 2.0f, h = y * (2.0f + 0.4f * vActive.displayValue);
 
-        const bool hov = u->GetState(UIRect::HOVERED);
+        const bool hov = u->Hovered();
         vActive.Set(hov);
         if (hov) {
             vSelectedIndex.Set(i);
@@ -73,7 +73,7 @@ void Sidebar::Draw(Canvas& canvas) {
         if (!vActive.target && vActive.IsStable()) continue;
 
         canvas.Stroke(highlightColor);
-        canvas.DrawText(name, h * 0.5f, { h, 0 }, { TextAlign::LEFT | TextAlign::CLIP, { t * 150.0f, y * 2.0f } });
+        canvas.DrawText(name, h * 0.5f, { h * 0.9f, 0 }, { TextAlign::LEFT | TextAlign::CLIP, { t * 150.0f, y * 2.0f } });
     }
-    vHasSelected.target = uRoot->GetState(UIRect::HOVERED | UIRect::CHILDREN_INVOLVED);
+    vHasSelected.target = uRoot->Hovered() && uRoot->TouchesChildren();
 }

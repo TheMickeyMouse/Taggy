@@ -42,14 +42,15 @@ namespace CLI {
         if (const auto m = tagReader.ReadV1(); m) {
             Debug::QWarn$("ID3v1 tag exists");
         }
+
+        tagReader.SetCallback([] (ID3v2::TagID tag, u32 size, const ID3v2::Field& field) {
+            Text::Print("\n\t{:<16} ({} bytes): ", ID3v2::GetTagRules(tag).properName, size);
+            ID3v2::PrintField(field);
+        });
+
         if (const auto m = tagReader.ReadV2(); m) {
             const auto& metadata = *m;
             Text::Print("Found tag: ID3v2.{}.{}; {} bytes in total", metadata.tagVersion >> 8, metadata.tagVersion & 0xFF, metadata.size);
-            for (const auto& [tag, data] : Iter::Zip(metadata.tags.Iter(), metadata.tagFields.Iter())) {
-                Text::Print("\n\t{:<16} ({} bytes): ", ID3v2::GetTagRules(tag.id).properName, tag.size);
-                PrintField(data);
-            }
-
             tagReader.file.seekg(0, std::ios::end);
             Text::PrintLn("\nTotal file size: {} bytes", std::filesystem::file_size(path.Data()));
             Text::PrintLn("Statistics:\n\tMPEG Version {} Layer {}\n\tBitrate: {}kbps, Sampling rate: {}Hz, Channels: {}",

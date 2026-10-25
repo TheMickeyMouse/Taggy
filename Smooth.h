@@ -18,7 +18,7 @@ namespace Anim {
     template <class T> using Floatify = decltype(FloatifyVal<T>());
 }
 
-enum class Speed { SLOW = 6, MEDIUM = 8, FAST = 12 };
+enum class Speed { SLOW = 6, MEDIUM = 8, FAST = 12, REALLY_FAST = 18 };
 
 template <class T>
 struct Smooth {
@@ -32,7 +32,7 @@ struct Smooth {
 
     void Update(float dt) {
         displayValue = Anim::Lerp(displayValue, (F)target, smoothness * dt);
-        if (std::abs(displayValue - target) <= f32s::DELTA) {
+        if (std::abs(displayValue - target) <= 0.01f) {
             displayValue = target;
         }
     }

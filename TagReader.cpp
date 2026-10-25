@@ -213,7 +213,7 @@ namespace ID3v2 {
         char yearStr[4] = {};
         if (!TagReader::ReadNumeric4Char(data, yearStr)) return false;
 
-        year = (yearStr[0] * 1000 + yearStr[1] * 100 + yearStr[2] * 10 + yearStr[3]) - '0' * 1111;
+        year = yearStr[0] * 1000 + yearStr[1] * 100 + yearStr[2] * 10 + yearStr[3];
 
         return true;
     }
@@ -241,8 +241,8 @@ namespace ID3v2 {
         char ddmmStr[4] = {};
         if (!TagReader::ReadNumeric4Char(data, ddmmStr)) return false;
 
-        day   = ddmmStr[0] * 10 + ddmmStr[1] - '0' * 11;
-        month = ddmmStr[2] * 10 + ddmmStr[3] - '0' * 11;
+        day   = ddmmStr[0] * 10 + ddmmStr[1];
+        month = ddmmStr[2] * 10 + ddmmStr[3];
 
         return true;
     }
@@ -627,7 +627,12 @@ Option<ID3v1> TagReader::ReadV1() {
     } else return tag;
 }
 
+void TagReader::SetCallback(FnRef<void(ID3v2::TagID, u32, ID3v2::Field)> fn) {
+    callback = fn;
+}
+
 bool TagReader::ReadV2Header(ID3v2::Metadata& meta) {
+    // [[maybe_unused]] Debug::Timer timer { "reading header", Debug::Logger::InternalLog };
     using namespace ID3v2;
     Header header = {};
     file.read((char*)&header, sizeof(Header));
@@ -671,7 +676,7 @@ bool TagReader::ReadV2Header(ID3v2::Metadata& meta) {
     return true;
 }
 
-bool TagReader::ReadV2TagHeader(ID3v2::Tag& tag) {
+bool TagReader::ReadV2TagHeader(Out<ID3v2::TagID&> tag, Out<u32&> tagSize) {
     using namespace ID3v2;
     // Frame ID       $xx xx xx xx (four characters)
     // Size           $xx xx xx xx
@@ -682,18 +687,18 @@ bool TagReader::ReadV2TagHeader(ID3v2::Tag& tag) {
     // id check
     const u32 idBytes = Memory::ReadU32Big(fHeader.id);
     if ("XAAA"_u32 <= idBytes && idBytes <= "ZZZZ"_u32) {
-        tag.id = (TagID)idBytes;
+        tag = (TagID)idBytes;
     } else if (const auto [found, idx] = Span(TAG_ID_NAMES_INDEX).BinarySearch(idBytes); found) {
-        tag.id = (TagID)(idx + 1);
+        tag = (TagID)(idx + 1);
     } else if (idBytes == 0) { // within padding
-        tag.id = TagID::NONE;
+        tag = TagID::NONE;
         return true; // no need to raise an error
     } else {
-        tag.id = TagID::NONE;
+        tag = TagID::NONE;
         Debug::QError$("found unidentifiable tag '{}'", Str::Slice(fHeader.id, 4));
         return false;
     }
-    tag.size = Memory::ReadU32Big(fHeader.size);
+    tagSize = Memory::ReadU32Big(fHeader.size);
 
     // flags check
     if (fHeader.wFlags & FrameHeader::SHOULD_BE_ZEROS || fHeader.rFlags & FrameHeader::SHOULD_BE_ZEROS) {
@@ -702,85 +707,113 @@ bool TagReader::ReadV2TagHeader(ID3v2::Tag& tag) {
     }
     const u32 flags = (fHeader.wFlags >> 5) | (fHeader.rFlags >> 2);
 
-    // flag management
-    u32 skip = 0;
-    if (flags & (1 << 2)) {
-        Debug::QWarn$("compression is not yet supported.");
-        skip += 4;
+    if (flags) {
+        // flag management
+        u32 skip = 0;
+        if (flags & (1 << 2)) {
+            Debug::QWarn$("compression is not yet supported.");
+            skip += 4;
+        }
+        if (flags & (1 << 1)) {
+            Debug::QWarn$("encryption is not yet supported.");
+            skip += 1;
+        }
+        if (flags & (1 << 0)) {
+            Debug::QWarn$("groups are not yet supported.");
+            skip += 1;
+        }
+        FSeek(skip);
     }
-    if (flags & (1 << 1)) {
-        Debug::QWarn$("encryption is not yet supported.");
-        skip += 1;
-    }
-    if (flags & (1 << 0)) {
-        Debug::QWarn$("groups are not yet supported.");
-        skip += 1;
-    }
-    FSeek(skip);
 
     return true;
 }
 
-bool TagReader::ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload) {
+bool TagReader::ReadV2TagData(ID3v2::TagID t, u32 size) {
     using namespace ID3v2;
-    const TagRules& rules = GetTagRules(t.id);
+    const TagRules& rules = GetTagRules(t);
     if (!rules.supported) {
-        Debug::QWarn$("tag '{}' ({}) is currently not supported", (const char*)TAG_ID_NAME_LOOKUP[(u32)t.id - 1], rules.properName);
-        FSeek(t.size);
+        Debug::QWarn$("tag '{}' ({}) is currently not supported", (const char*)TAG_ID_NAME_LOOKUP[(u32)t - 1], rules.properName);
+        FSeek(size);
         return true;
     }
-    if (rules.deprecatedInV4) {
-        Debug::QWarn$("tag '{}' ({}) is deprecated in version 4.0", (const char*)TAG_ID_NAME_LOOKUP[(u32)t.id - 1], rules.properName);
+    if (rules.deprecatedInV4 && t != TagID::TYER && t != TagID::TDAT) {
+        Debug::QWarn$("tag '{}' ({}) is deprecated in version 4.0", (const char*)TAG_ID_NAME_LOOKUP[(u32)t - 1], rules.properName);
     }
 
-    Bytes payloadBinary = FGet(t.size);
+    Bytes payloadBinary = FGet(size);
+
+#if 0
+    String timerName = Text::Format("reading tag {} ({} bytes)", rules.properName, size);
+    [[maybe_unused]] Debug::Timer timer { timerName, Debug::Logger::GetInternalLog() };
+#endif
 
     switch (rules.format) {
         case TagFormat::TEXT: {
-            payload.Set(TextField());
-            return payload.As<TextField>()->Read(payloadBinary);
+            TextField txt;
+            if (!txt.Read(payloadBinary)) return false;
+            callback(t, size, std::move(txt));
+            break;
         }
         case TagFormat::YEAR: {
-            payload.Set(YearField());
-            return payload.As<YearField>()->Read(payloadBinary);
+            YearField yr;
+            if (!yr.Read(payloadBinary)) return false;
+            callback(t, size, yr);
+            break;
         }
         case TagFormat::NCHAR: {
-            payload.Set(NumberField());
-            return payload.As<NumberField>()->Read(payloadBinary);
+            NumberField num;
+            if (!num.Read(payloadBinary)) return false;
+            callback(t, size, num);
+            break;
         }
-        case TagFormat::OTHER: switch (t.id) {
+        case TagFormat::OTHER: switch (t) {
             case TagID::UFID: {
-                payload.Set(UFID());
-                return payload.As<UFID>()->Read(payloadBinary);
+                UFID ufid;
+                ufid.Read(payloadBinary);
+                callback(t, size, ufid);
+                break;
             }
             case TagID::TXXX: { // custom text field
-                payload.Set(CustomTextField());
-                return payload.As<CustomTextField>()->Read(payloadBinary);
+                CustomTextField txt;
+                if (!txt.Read(payloadBinary)) return false;
+                callback(t, size, std::move(txt));
+                break;
             }
             case TagID::TDAT: { // date
-                payload.Set(DateField());
-                return payload.As<DateField>()->Read(payloadBinary);
+                DateField date;
+                if (!date.Read(payloadBinary)) return false;
+                callback(t, size, std::move(date));
+                break;
             }
             case TagID::TIME: { // time
-                payload.Set(TimeField());
-                return payload.As<TimeField>()->Read(payloadBinary);
+                TimeField time;
+                if (!time.Read(payloadBinary)) return false;
+                callback(t, size, time);
+                break;
             }
             case TagID::APIC: { // picture
-                payload.Set(PictureField());
-                return payload.As<PictureField>()->Read(payloadBinary);
+                PictureField pic;
+                if (!pic.Read(payloadBinary)) return false;
+                callback(t, size, std::move(pic));
+                break;
             }
             case TagID::USLT: {
-                payload.Set(UnsyncedLyricsField());
-                return payload.As<UnsyncedLyricsField>()->Read(payloadBinary);
+                UnsyncedLyricsField unsynced;
+                if (!unsynced.Read(payloadBinary)) return false;
+                callback(t, size, std::move(unsynced));
+                break;
             }
             case TagID::SYLT: {
-                payload.Set(SyncedLyricsField());
-                return payload.As<SyncedLyricsField>()->Read(payloadBinary);
+                SyncedLyricsField synced;
+                if (!synced.Read(payloadBinary)) return false;
+                callback(t, size, std::move(synced));
+                break;
             }
             default: return true;
-        }
+        } break;
         default: return false;
     }
+    return true;
 }
 
 bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&> firstPosition) {
@@ -906,18 +939,24 @@ bool TagReader::ReadTextWithEncoding(bool isUtf16, Bytes string, String& result,
 bool TagReader::ReadNumeric4Char(Bytes string, char(& result)[4]) {
     const bool isUTF16 = string[0];
 
+    u32 r4;
     if (isUTF16) {
-        result[0] = string[4]  | string[5];
-        result[1] = string[6]  | string[7];
-        result[2] = string[8]  | string[9];
-        result[3] = string[10] | string[11];
+        // result[0] = string[4]  | string[5];
+        // result[1] = string[6]  | string[7];
+        // result[2] = string[8]  | string[9];
+        // result[3] = string[10] | string[11];
+        u64 b8 = Memory::ReadU64(&string[4]);
+        b8 = (b8 | (b8 >> 8)) & 0x00FF00FF00FF00FF;
+        b8 = (b8 | (b8 >> 8)) & 0x0000FFFF0000FFFF;
+        r4 = b8 | b8 >> 16;
     } else {
-        Memory::MemCopy(result, string.Data() + 1, 4);
+        r4 = Memory::ReadU32(&string[1]);
     }
+    r4 ^= 0x30303030;
+    Memory::WriteU32(r4, result);
 
-    if (!Chr::IsDigit(result[0]) || !Chr::IsDigit(result[1])
-     || !Chr::IsDigit(result[2]) || !Chr::IsDigit(result[3])) {
-        Debug::QWarn$("bad year/date/time field! found '{}'", Str::Slice(result, 4));
+    if (!Bitwise::BytesAllWithinRange(r4, 0, 10)) {
+        Debug::QWarn$("bad year/date/time field! found '{}'", string.AsStr());
         return false;
     }
 
@@ -955,22 +994,40 @@ Option<ID3v2::Metadata> TagReader::ReadV2() {
     Metadata meta = {};
     if (!ReadV2Header(meta)) return nullptr;
 
-    rawBytes = ArrayBox<u8>::AllocateUninit(meta.size);
-    file.read((char*)rawBytes.Data(), meta.size);
+    {
+#if 0
+        [[maybe_unused]] Debug::Timer timer { "fetching id3v2 header", Debug::Logger::InternalLog };
+        Debug::QDebug$("total tags: {} bytes", meta.size);
+#endif
+        rawBytes = ArrayBox<u8>::AllocateUninit(meta.size);
+        file.read((char*)rawBytes.Data(), meta.size);
+    }
+
     currentPosition = 0;
 
     for (usize readSize = 0; readSize < meta.size;) {
-        Tag tag = {};
-        if (!ReadV2TagHeader(tag)) return nullptr;
-        if (tag.id == TagID::NONE) break; // just skip everything; we've hit padding
+        TagID tag;
+        u32 size;
+        if (!ReadV2TagHeader(tag, size)) return nullptr;
 
-        meta.tags.Push(tag);
-        if (!ReadV2TagData(tag, meta.tagFields.Push(None {}))) return nullptr;
+#if 0
+        String timerName = Text::Format("reading tag {} ({} bytes)", GetTagRules(tag).properName, size);
+        [[maybe_unused]] Debug::Timer timer { timerName, Debug::Logger::InternalLog };
+#endif
 
-        readSize += sizeof(FrameHeader) + tag.size;
+        if (tag == TagID::NONE) break; // just skip everything; we've hit padding
+
+        if (!ReadV2TagData(tag, size)) return nullptr;
+
+        readSize += sizeof(FrameHeader) + size;
     }
 
-    ReadMpegData(file, meta, meta.mpegBegin);
+    {
+#if 0
+        [[maybe_unused]] Debug::Timer timer { "mpeg reading", Debug::Logger::InternalLog };
+#endif
+        ReadMpegData(file, meta, meta.mpegBegin);
+    }
 
     return meta;
 }
@@ -1010,7 +1067,7 @@ bool TagWriter::WriteV2(Span<const ID3v2::TagFieldPair> tags) {
         if (!ID3v2::WriteField(field, fieldBytes)) return false;
 
         const u32 dataSize = fieldBytes.Length() - headerBegin - FIELD_HEADER_SIZE;
-        if (!WriteV2TagHeader(&fieldBytes[headerBegin], { tag.id, dataSize })) return false;
+        if (!WriteV2TagHeader(&fieldBytes[headerBegin], tag, dataSize)) return false;
     }
 
     u32 mpegBegin = 0;
@@ -1050,15 +1107,15 @@ void TagWriter::WriteV2Header(u32 size) {
     file.write((char*)&header, sizeof(header));
 }
 
-bool TagWriter::WriteV2TagHeader(byte* data, const ID3v2::Tag& tag) {
+bool TagWriter::WriteV2TagHeader(byte* data, ID3v2::TagID tag, u32 size) {
     using namespace ID3v2;
     // Frame ID       $xx xx xx xx (four characters)
     // Size           $xx xx xx xx
     // Flags          $xx xx
 
-    const u32 id = (u32)tag.id;
+    const u32 id = (u32)tag;
     if (0 < id && id < (u32)TagID::LAST_NORMAL) { // normal range
-        Memory::MemCopy(data, (const u8*)GetTagIDCode(tag.id), 4);
+        Memory::MemCopy(data, (const u8*)GetTagIDCode(tag), 4);
     } else if ("XAAA"_u32 <= id && id <= "ZZZZ"_u32) { // custom range
         Memory::WriteU32Big(id, data);
     } else {
@@ -1066,7 +1123,7 @@ bool TagWriter::WriteV2TagHeader(byte* data, const ID3v2::Tag& tag) {
         return false;
     }
 
-    Memory::WriteU32Big(tag.size, data + 4); // size
+    Memory::WriteU32Big(size, data + 4); // size
     return true;
 }
 

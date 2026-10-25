@@ -280,12 +280,6 @@ namespace ID3v2 {
     void PrintField(const Field& field);
     bool WriteField(const Field& field, Vec<byte>& data);
 
-    struct Tag {
-        TagID id;
-        u32 size = 0;
-        Tag(TagID id = TagID::NONE, u32 size = 0) : id(id), size(size) {}
-    };
-
     enum MpegVersion : u8 {
         V1 = 1, V2, V2_5
     };
@@ -297,14 +291,11 @@ namespace ID3v2 {
         u8 layerVersion;
         u16 samplingRate, bitrateKbps;
         u8 channels;
-
         u32 size, mpegBegin;
-        Vec<Tag> tags;
-        Vec<Field> tagFields;
     };
 
     struct TagFieldPair {
-        Tag tag;
+        TagID tag;
         Field field;
     };
 
@@ -332,12 +323,16 @@ private:
     ArrayBox<u8> rawBytes;
     u32 currentPosition = 0;
 public:
+    FnRef<void(ID3v2::TagID tag, u32 size, ID3v2::Field field)> callback;
+
     TagReader(std::filesystem::path filename);
     Option<ID3v1> ReadV1();
 
+    void SetCallback(FnRef<void(ID3v2::TagID tag, u32 size, ID3v2::Field field)> fn);
+
     bool ReadV2Header(Out<ID3v2::Metadata&> meta);
-    bool ReadV2TagHeader(Out<ID3v2::Tag&> tag);
-    bool ReadV2TagData(const ID3v2::Tag& t, Out<ID3v2::Field&> payload);
+    bool ReadV2TagHeader(Out<ID3v2::TagID&> tag, Out<u32&> tagSize);
+    bool ReadV2TagData(ID3v2::TagID t, u32 size);
     static bool ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&> firstPosition);
 
     static bool ReadTextWithEncoding(bool isUtf16, Bytes string, String& result, u32& bytesRead);
@@ -359,7 +354,7 @@ public:
 
     bool WriteV2(Span<const ID3v2::TagFieldPair> tags);
     void WriteV2Header(u32 size);
-    static bool WriteV2TagHeader(byte* data, const ID3v2::Tag& tag); // always writes 10 bytes
+    static bool WriteV2TagHeader(byte* data, ID3v2::TagID tag, u32 size); // always writes 10 bytes
     static void WriteMpegFrames(std::istream& input, std::ostream& output);
 
     static bool NeedsUtf16(Str text);

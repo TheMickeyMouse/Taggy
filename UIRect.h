@@ -76,6 +76,7 @@ static const fColor
     BACKGROUND_ALT = 0x20242b_rgbf,
     RED            = 0xc51f1f_rgbf,
     ACCENT         = 0x61afef_rgbf;
+static constexpr float ROUNDING_RADIUS = 10.0f;
 
 struct UIRectOptions {
     Sides padding = 0;
@@ -85,6 +86,7 @@ struct UIRectOptions {
 
 class UIDoc;
 struct UISiblingIter;
+struct UITreeIter;
 
 struct UIRef {
     enum : u32 { EMPTY = ~(u32)0, ROOT = 0 };
@@ -104,6 +106,7 @@ struct UIRef {
     UIRef Parent() const;
     UISiblingIter Siblings() const;
     UISiblingIter Children() const;
+    UITreeIter ChildrenRecr() const;
 
     void Kill() const;
     void TruncChildren(u32 n) const;
@@ -119,9 +122,9 @@ public:
     UIRef self;
 
     Dir side;
-    bool centerChildrenX = false, centerChildrenY = false;
-    // if false, then this object is destroyed
-    bool valid = false;
+    bool valid = false; // if false, then this object is destroyed
+
+    bool centerChildrenX : 1 = false, centerChildrenY : 1 = false;
 
     enum MouseStates {
         NONE = 0,
@@ -130,10 +133,15 @@ public:
         CLICKED = 4,
         CHILDREN_INVOLVED = 8,
     };
-    int mouseStates = NONE;
+    byte mouseStates = NONE;
 
     void SetState(int state, bool val);
     bool GetState(int state) const;
+    bool Hovered() const { return GetState(HOVERED); }
+    bool Pressed() const { return GetState(PRESSED); }
+    bool Clicked() const { return GetState(CLICKED); }
+    bool TouchesChildren() const { return GetState(CHILDREN_INVOLVED); }
+
     void ClearMouseStates();
     float ScrollDelta() const;
     fv2 ClickPos() const;
@@ -160,13 +168,14 @@ public:
     // for easy drawing
     __attribute__((always_inline)) auto BeginDraw(Canvas& c) const {
         auto t = c.PushTransform();
-        c.transform.pos += rect.BottomLeft() - self.Parent()->rect.BottomLeft();
+        c.transform.pos = rect.BottomLeft();
         return t;
     }
 
-    void Background(Canvas& c, const fColor& color, float border = 0);
-    void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl);
-    void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false);
+    void Background(Canvas& c, const fColor& color, float border = 0) const;
+    void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl) const;
+    void Capsule(Canvas& c, const fColor& color) const;
+    void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false) const;
 };
 
 struct UISiblingIter : IIterator<const UIRef, UISiblingIter> {
@@ -174,6 +183,18 @@ struct UISiblingIter : IIterator<const UIRef, UISiblingIter> {
     UIRef current;
 
     UISiblingIter(UIRef begin) : current(begin) {}
+
+    UIRef CurrentImpl() const;
+    void AdvanceImpl();
+    bool CanNextImpl() const;
+};
+
+// iterates through all children recursively, _not_ including the parent
+struct UITreeIter : IIterator<const UIRef, UITreeIter> {
+    using Item = const UIRef;
+    UIRef current, next, parent;
+
+    UITreeIter(UIRef root) : next(root.Child()), parent(root) { AdvanceImpl(); }
 
     UIRef CurrentImpl() const;
     void AdvanceImpl();

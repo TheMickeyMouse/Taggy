@@ -12,13 +12,12 @@ Titlebar::Titlebar(UIRect& root)
 
 void Titlebar::Draw(Canvas& canvas) {
     const auto _ = uRoot->BeginDraw(canvas);
-    uRoot->Background(canvas, BACKGROUND);
 
     for (auto btn : { uCloseBtn, uMaximizeBtn, uMinimizeBtn }) {
         [[maybe_unused]] const auto _2 = btn->BeginDraw(canvas);
         canvas.transform.scale = btn->rect.Width();
 
-        const bool hov = btn->GetState(UIRect::HOVERED);
+        const bool hov = btn->Hovered();
         canvas.Fill(hov ? (btn == uCloseBtn ? RED : DARK_GRAY) : BACKGROUND);
         if (hov) {
             canvas.NoStroke();

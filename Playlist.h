@@ -3,6 +3,7 @@
 
 struct Playlist {
     Path folderPath;
+    Str folderPathCStr, folderNameCStr;
     Vec<Track> tracks;
 
     static Playlist Load(CStr path);

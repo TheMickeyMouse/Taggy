@@ -17,7 +17,7 @@ App::App(int w, int h)
       uPlaybar (uDoc.Root(), canvas),
       uSidebar (uDoc.Root(), canvas),
       uMusic   (uDoc.Root()),
-      uPlaylistView(uDoc.Root())
+      uPlaylistView(uDoc.Root(), canvas, playlist)
 {
     Instance = *this;
 
@@ -30,11 +30,11 @@ App::App(int w, int h)
     }
 
     // Track::Load(track, "Resonance - Home.mp3", false);
-    playlist = Playlist::Load("D:\\Music\\Wrangled-Out");
+    playlist = Playlist::Load("D:\\Music\\Example");
     currentTrack = playlist.tracks[0];
     currentTrack->LoadSoundIntoMemory();
 
-    uDoc.PrettyPrintStructure();
+    // uDoc.PrettyPrintStructure();
 }
 
 App::~App() {
@@ -82,10 +82,11 @@ bool App::Run() {
     if (glfwGetWindowAttrib(gd.GetWindow(), GLFW_FOCUSED)) {
         gd.PollEvents();
 
-        uPlaylistView.Update();
+        uPlaylistView.Update(dt);
+        uSidebar.Update(dt);
     }
 
-    if (!IsWindowMinimized()) {
+    if (!IsWindowMinimized() && gd.GetWindowPos().AllGreater(-16000)) {
         canvas.BeginFrame();
 
         const auto& io = gd.GetIO();
@@ -97,14 +98,14 @@ bool App::Run() {
         }
 
         canvas.NoStroke();
-        canvas.Fill(0x272b34_rgb);
+        canvas.Fill(BACKGROUND);
         canvas.DrawRect({ 0, { Width(), Height() } });
 
         uTitlebar    .Draw(canvas);
-        uSidebar     .Draw(canvas);
         uMusic       .Draw(canvas, currentTrack);
         uPlaybar     .Draw(canvas, currentTrack, io);
-        uPlaylistView.Draw(canvas, playlist);
+        uPlaylistView.Draw(canvas);
+        uSidebar     .Draw(canvas);
 
         debugMode ^= io["I"].OnPress() && io.Shift();
         if (debugMode) {
@@ -139,10 +140,6 @@ bool App::Run() {
 
         if (io[IO::Key::SPACE].OnPress()) {
             currentTrack->Toggle();
-        }
-
-        {
-            uSidebar.Update(dt);
         }
 
         canvas.EndFrame();

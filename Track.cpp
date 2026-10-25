@@ -12,19 +12,14 @@ Track Track::UnloadedFromFile(Path fname) {
 
 bool Track::Load(Out<Track&> track, bool lazyLoad) {
     [[maybe_unused]] Debug::Timer timer { "mp3 reading", Debug::Logger::InternalLog };
+    timer.Stop();
     track.loaded = true;
 
     TagReader reader { track.filePath };
 
-    auto metadata = reader.ReadV2();
-    if (!metadata) {
-        Debug::QWarn$("couldn't read {}; skipping...", track.filePath.string().c_str());
-        return false;
-    }
-
-    for (auto& [tag, field] : Iter::Zip(metadata->tags.Iter(), metadata->tagFields.IterMut())) {
+    reader.SetCallback([&] (ID3v2::TagID tag, u32, ID3v2::Field field) {
         using namespace ID3v2;
-        switch (tag.id) {
+        switch (tag) {
             case TagID::APIC: {
                 timer.Stop();
                 [[maybe_unused]] Debug::Timer timerPng { "png loading", Debug::Logger::InternalLog };
@@ -40,9 +35,17 @@ bool Track::Load(Out<Track&> track, bool lazyLoad) {
                 track.artist = field.As<TextField>()->value.Replace('/', ", ");
                 break;
             }
-            default: continue;
+            default:;
         }
+    });
+
+    timer.Start();
+    auto metadata = reader.ReadV2();
+    if (!metadata) {
+        Debug::QWarn$("couldn't read {}; skipping...", track.filePath.string().c_str());
+        return false;
     }
+    timer.Stop();
 
     track.audioBeginPos = metadata->mpegBegin;
 

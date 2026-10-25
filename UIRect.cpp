@@ -77,7 +77,7 @@ float Length::ResolveSingle(const UIRect& parent, const fRect2D& remaining, Dir 
         return val * (parent.rect.Height() - parent.padding.GetY());
     }
     if (unit == RPER) {
-        return Dirs::IsX(side) ? remaining.Size().x : remaining.Size().y;
+        return Dirs::IsX(side) ? remaining.Width() : remaining.Height();
     }
     Debug::QError$("bad unit {}; how", (int)unit);
     return 0;
@@ -181,6 +181,10 @@ UISiblingIter UIRef::Children() const {
     return { Child() };
 }
 
+UITreeIter UIRef::ChildrenRecr() const {
+    return { *this };
+}
+
 void UIRef::Kill() const {
     UIDoc::Instance->Kill(*this);
 }
@@ -281,7 +285,7 @@ UIRef UIRect::Pack(Dir childSide, Length childLen, Str name, const UIRectOptions
     }, name);
 }
 
-void UIRect::Background(Canvas& c, const fColor& color, float border) {
+void UIRect::Background(Canvas& c, const fColor& color, float border) const  {
     [[maybe_unused]] const auto _ = c.PushStyles();
 
     c.NoStroke();
@@ -293,7 +297,7 @@ void UIRect::Background(Canvas& c, const fColor& color, float border) {
     }
 }
 
-void UIRect::Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl) {
+void UIRect::Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl) const {
     [[maybe_unused]] const auto _ = c.PushStyles();
 
     c.NoStroke();
@@ -301,7 +305,16 @@ void UIRect::Background(Canvas& c, const fColor& color, float tr, float br, floa
     c.DrawVarRoundedRect({ 0, rect.Size() }, tr, br, tl, bl);
 }
 
-void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) {
+void UIRect::Capsule(Canvas& c, const fColor& color) const {
+    [[maybe_unused]] const auto _2 = c.PushStyles();
+
+    const float r = rect.Width() / 2;
+    c.Stroke(color);
+    c.StrokeWeight(r);
+    c.DrawLine(r, rect.Size() - r);
+}
+
+void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) const {
     [[maybe_unused]] const auto _ = BeginDraw(c);
     [[maybe_unused]] const auto _2 = c.PushStyles();
 
@@ -364,6 +377,23 @@ void UISiblingIter::AdvanceImpl() {
 
 bool UISiblingIter::CanNextImpl() const {
     return (bool)current;
+}
+
+UIRef UITreeIter::CurrentImpl() const {
+    return current;
+}
+
+void UITreeIter::AdvanceImpl() {
+    current = next;
+    if (const auto child = next.Child()) next = child;
+    else while (true) {
+        if (const auto sibling = next.Sibling()) return (void)(next = sibling);
+        if ((next = next.Parent()) == parent) return;
+    }
+}
+
+bool UITreeIter::CanNextImpl() const {
+     return next != parent;
 }
 
 UIDoc::UIDoc(const fRect2D& root) {
@@ -434,6 +464,7 @@ void UIDoc::Kill(UIRef i) {
 
 void UIDoc::KillAllAfterSibling(UIRef sib) {
     if (!sib) return;
+    // pre-order tree traversal
     // R
     // ├─ A
     // │  ├─ A1
@@ -448,7 +479,7 @@ void UIDoc::KillAllAfterSibling(UIRef sib) {
     const UIRef first = sib, commonParent = sib.Parent();
     UIRef last;
 
-    PrettyPrintStructure();
+    // PrettyPrintStructure();
     while (true) {
         sib->MarkDestroyed();
         if (sib.Child()) {
@@ -563,7 +594,7 @@ void UIDoc::CheckMouseStates(const fv2& mouse, bool pressed, bool clicked, float
             // when ur mouse is held and hoveres over a ui elm,
             // without this check it would register as a mouse press (we dont want this)
             // should only trigger when the mouse is pressed inside the elm to begin with
-            curr.SetState(UIRect::PRESSED, curr.GetState(UIRect::PRESSED) ? pressed : clicked);
+            curr.SetState(UIRect::PRESSED, curr.Pressed() ? pressed : clicked);
             if (curr.mouseStates & UIRect::PRESSED) focusedID = next;
 
             search = next;
