@@ -152,8 +152,8 @@ void PlaylistView::Draw(Canvas& canvas) {
             canvas.DrawMesh(vPlaylistIcon.mesh, s / 4, s / (2 * iconWidth), WHITE);
         }
 
-        uPlaylistSrc  ->Label(canvas, playlist->folderPathCStr, LIGHT_GRAY);
-        uPlaylistTitle->Label(canvas, playlist->folderNameCStr, WHITE, TextAlign::LEFT, true);
+        uPlaylistSrc  ->Label(canvas, "[placeholder]", LIGHT_GRAY);
+        uPlaylistTitle->Label(canvas, playlist->name, WHITE, TextAlign::LEFT, true);
     }
 
     QWith$(uTracks->BeginDraw(canvas)) {

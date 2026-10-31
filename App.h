@@ -1,4 +1,6 @@
 #pragma once
+#include "Cache.h"
+#include "Config.h"
 #include "GraphicsDevice.h"
 #include "MusicDisplay.h"
 #include "Playbar.h"
@@ -31,6 +33,9 @@ public:
     Playlist playlist;
     OptRef<Track> currentTrack;
 
+    Cache cache;
+    Config config;
+
     ma_engine audioEngine;
 public:
     App(int w, int h);
@@ -55,4 +60,6 @@ public:
     static Font& GetFont();
     static Font& GetFontBold();
     static ma_engine* GetAudioEngine();
+
+    static Cache& GetCache();
 };

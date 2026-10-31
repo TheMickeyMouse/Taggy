@@ -1,12 +1,13 @@
 #pragma once
 #include "Track.h"
 
+struct PlaylistConfig;
+
 struct Playlist {
-    Path folderPath;
-    Str folderPathCStr, folderNameCStr;
+    Str name;
     Vec<Track> tracks;
 
-    static Playlist Load(CStr path);
+    static Playlist Load(const PlaylistConfig& conf);
 
     OptRef<Track> Request(int i);
 };

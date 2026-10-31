@@ -36,5 +36,9 @@ add_executable(Taggy main.cpp
         Playlist.cpp
         Playlist.h
         PlaylistView.cpp
-        PlaylistView.h)
+        PlaylistView.h
+        Config.cpp
+        Config.h
+        Cache.cpp
+        Cache.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)

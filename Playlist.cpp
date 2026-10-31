@@ -1,16 +1,14 @@
 #include "Playlist.h"
 
-Playlist Playlist::Load(CStr path) {
-    Playlist playlist {
-        .folderPath = path.Data(),
-        .folderPathCStr = path,
-        .folderNameCStr = path.RevSplitOnceOn(Cmp::Equals { '\\' })[2_nd]
-    };
+#include "Config.h"
+
+Playlist Playlist::Load(const PlaylistConfig& conf) {
+    Playlist playlist { .name = conf.name };
 
     [[maybe_unused]] const Debug::Timer timer { "fetching all files in directory", Debug::Logger::GetInternalLog() };
 
-    for (const auto& file : std::filesystem::directory_iterator(playlist.folderPath)) {
-        playlist.tracks.Push(Track::UnloadedFromFile(file.path()));
+    for (const auto& filename : conf.songFilenames) {
+        playlist.tracks.Push(Track::UnloadedFromFile(filename));
     }
 
     return playlist;

@@ -10,47 +10,66 @@ Track Track::UnloadedFromFile(Path fname) {
     return t;
 }
 
+namespace Fs = std::filesystem;
+
 bool Track::Load(Out<Track&> track, bool lazyLoad) {
-    [[maybe_unused]] Debug::Timer timer { "mp3 reading", Debug::Logger::InternalLog };
-    timer.Stop();
     track.loaded = true;
 
-    TagReader reader { track.filePath };
+    auto& songCache = App::GetCache().songs;
+    if (const auto c = songCache.Get(track.filePath); c && (Fs::last_write_time(track.filePath) <= c->lastModifiedTime)) {
+        track.title       = c->name;
+        track.artist      = c->artist;
+        track.durationSec = c->durationSec;
 
-    reader.SetCallback([&] (ID3v2::TagID tag, u32, ID3v2::Field field) {
-        using namespace ID3v2;
-        switch (tag) {
-            case TagID::APIC: {
-                timer.Stop();
-                [[maybe_unused]] Debug::Timer timerPng { "png loading", Debug::Logger::InternalLog };
-                track.cover = Texture2D::LoadPNGBytes(field.As<PictureField>()->pictureData, { .pixelated = false }, false);
-                timer.Start();
-                break;
+        if (!c->coverFilename) goto requiresRecache;
+        track.cover = Texture2D::New(c->FetchCover());
+    } else {
+        requiresRecache:
+
+        TagReader reader { track.filePath };
+
+        auto& cache = songCache.Insert(SongCache { .filename = track.filePath });
+
+        reader.SetCallback([&] (ID3v2::TagID tag, u32, ID3v2::Field field) {
+            using namespace ID3v2;
+            switch (tag) {
+                case TagID::APIC: {
+                    const Bytes imgBytes = field.As<PictureField>()->pictureData;
+                    App::GetCache().AddCoverToCache(imgBytes, cache);
+
+                    [[maybe_unused]] Debug::Timer timerPng { "png loading", Debug::Logger::InternalLog };
+                    track.cover = Texture2D::LoadPNGBytes(imgBytes, {}, false);
+                    break;
+                }
+                case TagID::TIT2: {
+                    track.title = std::move(field.As<TextField>()->value);
+                    break;
+                }
+                case TagID::TPE1: {
+                    track.artist = field.As<TextField>()->value.Replace('/', ", ");
+                    break;
+                }
+                case TagID::TALB: {
+                    track.album = field.As<TextField>()->value;
+                    break;
+                }
+                default:;
             }
-            case TagID::TIT2: {
-                track.title = std::move(field.As<TextField>()->value);
-                break;
-            }
-            case TagID::TPE1: {
-                track.artist = field.As<TextField>()->value.Replace('/', ", ");
-                break;
-            }
-            default:;
+        });
+
+        auto metadata = reader.ReadV2();
+        if (!metadata) {
+            Debug::QWarn$("couldn't read {}; skipping...", track.filePath.string().c_str());
+            return false;
         }
-    });
 
-    timer.Start();
-    auto metadata = reader.ReadV2();
-    if (!metadata) {
-        Debug::QWarn$("couldn't read {}; skipping...", track.filePath.string().c_str());
-        return false;
+        cache.Record(track);
+        App::GetCache().modified = true;
+
+        reader.file.close();
     }
-    timer.Stop();
-
-    track.audioBeginPos = metadata->mpegBegin;
 
     if (!lazyLoad) {
-        reader.file.close();
         track.LoadSoundIntoMemory();
     }
 
@@ -72,7 +91,10 @@ void Track::LoadSoundIntoMemory() {
         &*sound
     );
 
-    ma_sound_get_length_in_seconds(&*sound, &durationSec);
+    if (f32s::IsNaN(durationSec)) {
+        ma_sound_get_length_in_seconds(&*sound, &durationSec);
+        App::GetCache().songs.Get(filePath)->durationSec = durationSec;
+    }
 
     if (result != MA_SUCCESS) {
         Debug::QError$("mp3 load err code {}", (int)result);

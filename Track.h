@@ -7,14 +7,13 @@ using Path = std::filesystem::path;
 
 struct Track {
     Path filePath;
-    u32 audioBeginPos = 0;
 
     Texture2D cover;
-    String title, artist;
+    String title, artist, album;
 
     Box<ma_sound> sound;
 
-    float durationSec = 0.0f;
+    float durationSec = f32s::NAN;
     bool isPlaying = false;
     bool loaded = false;
 

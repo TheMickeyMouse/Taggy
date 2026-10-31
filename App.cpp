@@ -29,16 +29,22 @@ App::App(int w, int h)
         Debug::QCritical$("Couldn't initialize audio engine! err code: {}", (int)result);
     }
 
+    config = Config::Load();
+    cache = Cache::Load();
+
     // Track::Load(track, "Resonance - Home.mp3", false);
-    playlist = Playlist::Load("D:\\Music\\Example");
+    playlist = Playlist::Load(config.playlists.First());
     currentTrack = playlist.tracks[0];
-    currentTrack->LoadSoundIntoMemory();
+    currentTrack->Load(currentTrack, false);
 
     // uDoc.PrettyPrintStructure();
 }
 
 App::~App() {
     ma_engine_uninit(&audioEngine);
+
+    config.Save();
+    cache.Save();
 }
 
 const GLFWwindow* App::Window() const {
@@ -178,4 +184,8 @@ Font& App::GetFontBold() {
 
 ma_engine* App::GetAudioEngine() {
     return &Instance->audioEngine;
+}
+
+Cache& App::GetCache() {
+    return Instance->cache;
 }
