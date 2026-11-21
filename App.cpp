@@ -4,6 +4,7 @@
 
 #include "glp.h"
 #include "WinUtils.h"
+#include "Utils/Text/UTF.h"
 
 App::App(int w, int h)
     : gd(GraphicsDevice::Initialize({ w, h }, { .beginPosition = { 300 }, .windowTitle = "Taggy" })),
@@ -17,25 +18,24 @@ App::App(int w, int h)
       uPlaybar (uDoc.Root(), canvas),
       uSidebar (uDoc.Root(), canvas),
       uMusic   (uDoc.Root()),
-      uPlaylistView(uDoc.Root(), canvas, playlist)
+      uPlaylistView(uDoc.Root(), canvas)
 {
     Instance = *this;
 
     glfwSetWindowSizeLimits(gd.GetWindow(), 800, 600, GLFW_DONT_CARE, GLFW_DONT_CARE);
-    WinUtils::UseCustomTitlebar(gd.GetWindow(), Titlebar::HEIGHT, Titlebar::HEIGHT);
+    WinUtils::SetHwnd(gd.GetWindow());
+    WinUtils::UseCustomTitlebar(Titlebar::HEIGHT, Titlebar::HEIGHT);
     canvas.FlipYDirection();
 
     if (const auto result = ma_engine_init(nullptr, &audioEngine); result != MA_SUCCESS) {
         Debug::QCritical$("Couldn't initialize audio engine! err code: {}", (int)result);
     }
 
-    config = Config::Load();
-    cache = Cache::Load();
+    config = Config::Read();
+    cache = Cache::Read();
 
-    // Track::Load(track, "Resonance - Home.mp3", false);
-    playlist = Playlist::Load(config.playlists.First());
-    currentTrack = playlist.tracks[0];
-    currentTrack->Load(currentTrack, false);
+    uPlaylistView.Select(config.playlistLibrary, 0);
+    Track::Load(CurrentTrack(), false);
 
     // uDoc.PrettyPrintStructure();
 }
@@ -43,8 +43,8 @@ App::App(int w, int h)
 App::~App() {
     ma_engine_uninit(&audioEngine);
 
-    config.Save();
-    cache.Save();
+    config.Write();
+    cache.Write();
 }
 
 const GLFWwindow* App::Window() const {
@@ -107,6 +107,7 @@ bool App::Run() {
         canvas.Fill(BACKGROUND);
         canvas.DrawRect({ 0, { Width(), Height() } });
 
+        auto& currentTrack = CurrentTrack();
         uTitlebar    .Draw(canvas);
         uMusic       .Draw(canvas, currentTrack);
         uPlaybar     .Draw(canvas, currentTrack, io);
@@ -115,22 +116,23 @@ bool App::Run() {
 
         debugMode ^= io["I"].OnPress() && io.Shift();
         if (debugMode) {
-            canvas.StrokeWeight(5);
             canvas.Stroke(1);
             canvas.DrawText(
                 Text::Format(
                     "WPos = {}, {}x{}; "
                     "LClick = {}; "
                     "Mouse = {}; "
-                    "FPS = {}; "
                     "MouseDown = {}; "
-                    "Hovering = '{}'",
+                    "Hovering = '{}'\n"
+                    "FPS = {}; "
+                    "FrameTime = {}.{:03}ms; ",
                     gd.GetWindowPos(), gd.GetWindowSize().x, gd.GetWindowSize().y,
                     io.LeftMouse().ClickedPos(),
                     io.GetMousePos(),
-                    std::llround(io.Framerate()),
                     io.LeftMouse().Pressed(),
-                    uDoc.DebugNameOf(uDoc.hoveredID)
+                    uDoc.DebugNameOf(uDoc.hoveredID),
+                    std::llround(io.Framerate()),
+                    gd.GetFrameTime().count() / 1000'000, (gd.GetFrameTime().count() / 1000) % 1000
                 ),
                 11.0f,
                 { 0, Height() },
@@ -144,8 +146,14 @@ bool App::Run() {
             uDoc.PrettyPrintStructure();
         }
 
+        if (io[IO::Key::F].OnPress()) {
+            for (auto& f : WinUtils::OpenFileDialog()) {
+                Debug::QInfo$("opened file {}", Text::Utf16To8(f.c_str()));
+            }
+        }
+
         if (io[IO::Key::SPACE].OnPress()) {
-            currentTrack->Toggle();
+            CurrentTrack().Toggle();
         }
 
         canvas.EndFrame();
@@ -166,12 +174,17 @@ String App::FormatSeconds(int seconds) {
     return Text::Format("{}:{:02}", seconds / 60, seconds % 60);
 }
 
-void App::SelectTrack(OptRef<Track> track) {
-    if (currentTrack.RefEquals(track)) return;
+void App::SelectTrack(u32 playlistIdx, u32 trackIdx) {
+    if (currentPlaylistIdx == playlistIdx && currentTrackIdx == trackIdx) return;
 
-    currentTrack->Stop();
-    currentTrack = track;
-    currentTrack->Start();
+    CurrentTrack().Stop();
+    currentPlaylistIdx = playlistIdx;
+    currentTrackIdx    = trackIdx;
+    CurrentTrack().Start();
+}
+
+Track& App::CurrentTrack() {
+    return config.playlistLibrary.playlists[currentPlaylistIdx].tracks[currentTrackIdx];
 }
 
 Font& App::GetFont() {

@@ -2,24 +2,10 @@
 
 #include <fstream>
 
+#include "Json.h"
 #include "Track.h"
 #include "Utils/Debug/Timer.h"
-
-Str Quasi::LegConvert(std::string_view s) {
-    return Str::Slice(s.data(), s.size());
-}
-
-std::string_view Quasi::LegConvert(Str s) {
-    return { s.Data(), s.Length() };
-}
-
-void Quasi::to_json(Nh::json& j, Str s) {
-    j = LegConvert(s);
-}
-
-void Quasi::from_json(const Nh::json& j, String& s) {
-    s = LegConvert(j.get<std::string_view>());
-}
+#include "Utils/Text/UTF.h"
 
 Bytes Quasi::GetBytesOfPath(const Path& p) {
     const auto& nativeString = p.native();
@@ -49,59 +35,104 @@ Array<char, 8> Quasi::ToHexString(u32 number) {
     return hex;
 }
 
-void std::filesystem::to_json(Nh::json& j, FileTime time) {
-    j = time.time_since_epoch().count();
+void std::filesystem::WriteJsonValue(JsonWriter& w, FileTime time) {
+    w.Number(time.time_since_epoch().count());
 }
 
-void std::filesystem::from_json(const Nh::json& j, FileTime& time) {
-    time = FileTime(Debug::Nanosecond(j.get<i64>()));
+void std::filesystem::WriteJsonValue(JsonWriter& w, const Path& path) {
+    w.StrLit(Text::Utf16To8(path.c_str()).Assert("bad utf16 path!"));
+}
+
+void std::filesystem::ReadFileTime(FileTime* time, Str& s) {
+    i64 sinceEpoch = 0;
+    JsonReader::NumDecoder(&sinceEpoch, s);
+    *time = FileTime(FileTime::duration(sinceEpoch));
+}
+
+void std::filesystem::ReadPath(Path* path, Str& s) {
+    String x;
+    JsonReader::StrDecoder(&x, s);
+    *path = Path(std::string_view(x.Data(), x.Length()));
 }
 
 namespace Fs = std::filesystem;
 
-void SongCache::ToJson(Nh::json& j) const {
-    j = {
-        { "file",         filename },
-        { "name",         name },
-        { "artist",       artist },
-        { "album",        album },
-        { "duration",     durationSec },
-        { "cover",        coverFilename },
-        { "lastModified", lastModifiedTime },
-    };
+void TrackCache::Write(JsonWriter& w) const {
+    w.BeginObject();
+        w.Field("file",         filename),
+        w.Field("name",         name),
+        w.Field("artist",       artist),
+        w.Field("album",        album),
+        w.Field("duration",     durationMs),
+        w.Field("cover",        coverFilename),
+        w.Field("lastModified", lastModifiedTime),
+    w.EndObject();
 }
 
-void SongCache::FromJson(const Nh::json& j) {
-    j.at("file")        .get_to(filename);
-    j.at("name")        .get_to(name);
-    j.at("artist")      .get_to(artist);
-    j.at("album")       .get_to(album);
-    if (const auto d = j.at("duration"); d.is_number())
-        durationSec = d.get<float>();
-    else durationSec = f32s::NAN;
-    j.at("cover")       .get_to(coverFilename);
-    j.at("lastModified").get_to(lastModifiedTime);
+void TrackCache::Read(Str& input) {
+    JsonReader r = JsonReader::ForObject();
+    r.Accept   ("file",         &filename, &std::filesystem::ReadPath);
+    r.AcceptStr("name",         &name);
+    r.AcceptStr("artist",       &artist);
+    r.AcceptStr("album",        &album);
+    r.Accept   ("duration",     &durationMs, JsonReader::Opt<int, &JsonReader::NumDecoder>);
+    r.AcceptStr("cover",        &coverFilename);
+    r.Accept   ("lastModified", &lastModifiedTime, std::filesystem::ReadFileTime);
 
-    if (!Fs::exists(Path(Cache::C_COVERS_PATH) / coverFilename.Data())) {
-        coverFilename = "";
-    } else coverFilename.AddNullTerm();
+    r.Process(input);
 }
 
-void SongCache::Record(const Track& track) {
-    filename         = track.filePath;
-    name             = track.title;
-    artist           = track.artist;
-    album            = track.album;
-    durationSec      = track.durationSec;
-    lastModifiedTime = FileTime::clock::now();
+Image TrackCache::FetchCover() const {
+    return Image::LoadPNG(Text::Format("{}{}", Cache::C_COVERS_PATH, coverFilename).IntoCStr(), false);
 }
 
-Image SongCache::FetchCover() const {
-    return Image::LoadPNG(Text::Format("{}{}", Cache::C_COVERS_PATH, coverFilename).IntoCStr());
+bool TrackCache::CheckOutdated() const {
+    return Fs::last_write_time(filename) > lastModifiedTime;
 }
 
-Hashing::Hash SongCache::GetHashCode() const {
+Hashing::Hash TrackCache::GetHashCode() const {
     return Hashing::HashObject(filename);
+}
+
+void Cache::Songs::WriteDefault() {
+    if (Fs::exists(FILE)) return;
+    Text::WriteFile(FILE, "[]");
+}
+
+void Cache::Songs::Write(JsonWriter& w) const {
+    w.BeginArray();
+    for (auto& song : tracks) {
+        song.Write(w);
+    }
+    w.EndArray();
+}
+
+void Cache::Songs::Read(Str input) {
+    JsonReader r = JsonReader::ForArray(
+        &tracks, +[] (HashSet<TrackCache>* c, Str& s) {
+            TrackCache t;
+            t.Read(s);
+            c->Insert(t);
+        }
+    );
+    r.Process(input);
+}
+
+void Cache::General::WriteDefault() {
+    if (Fs::exists(FILE)) return;
+    Text::WriteFile(FILE, "{ \"coverIDcounter\": 1 }");
+}
+
+void Cache::General::Write(JsonWriter& w) const {
+    w.BeginObject();
+    w.Field("coverIDcounter", coverIDcounter);
+    w.EndObject();
+}
+
+void Cache::General::Read(Str input) {
+    JsonReader r = JsonReader::ForObject();
+    r.AcceptNum("coverIDcounter", &coverIDcounter);
+    r.Process(input);
 }
 
 void Cache::RepairDefaultProfile() {
@@ -111,87 +142,74 @@ void Cache::RepairDefaultProfile() {
     // │  └─ ...
     // ├─ general.json
     // └─ songs.json
-    const Path root = C_ROOT_PATH;
-    Fs::create_directory(root);
+    Fs::create_directory(C_ROOT_PATH);
     Fs::create_directory(C_COVERS_PATH);
 
-    if (const Path p = root / C_GENERAL_FILE; !Fs::exists(p)) {
-        std::ofstream emptyFile = p;
-        emptyFile.write("{ \"coverIDcounter\": 1 }", Q_STRLIT_LEN("{ \"coverIDcounter\": 1 }"));
-    }
-
-    if (const Path p = root / C_SONGS_FILE; !Fs::exists(p)) {
-        std::ofstream emptyFile = p;
-        emptyFile.write("[]", 2);
-    }
+    Songs::WriteDefault();
+    General::WriteDefault();
 }
 
-Cache Cache::Load(CStr path) {
+Cache Cache::Read() {
     [[maybe_unused]] Debug::Timer timer { "loading cache metadata", Debug::Logger::GetInternalLog() };
 
-    const Path p = path.Data();
+    const Path p = C_ROOT_PATH;
     if (!Fs::exists(p) || !Fs::is_directory(p)) {
         RepairDefaultProfile();
     }
 
     Cache cache;
-    cache.LoadSongs(p);
-    cache.LoadGeneral(p);
+    if (const auto s = Text::ReadFileBinary(Songs::FILE))   cache.songs.Read(*s);
+    if (const auto s = Text::ReadFileBinary(General::FILE)) cache.general.Read(*s);
     return cache;
 }
 
-void Cache::LoadSongs(const Path& root) {
-    const Path p = root / C_SONGS_FILE;
-    Nh::json j = Nh::json::parse(std::ifstream(p));
-
-    for (auto& entry : j) {
-        songs.Insert(entry.get<SongCache>());
-    }
-}
-
-void Cache::LoadGeneral(const Path& root) {
-    const Path p = root / C_GENERAL_FILE;
-    Nh::json j = Nh::json::parse(std::ifstream(p));
-
-    coverIDcounter = j["coverIDcounter"];
-}
-
-void Cache::AddCoverToCache(Bytes imgBytes, SongCache& songEntry) {
-    songEntry.coverFilename = Text::Format("{}.png", ToHexString(coverIDcounter++).AsStr());
-    Text::WriteFileBinary(
-        Text::Format("{}{}", C_COVERS_PATH, songEntry.coverFilename).IntoCStr(),
-        imgBytes
-    );
-}
-
-void Cache::WriteSongsTo(Nh::json& j) const {
-    for (auto& song : songs) {
-        j.push_back(song);
-    }
-}
-
-void Cache::WriteGeneralTo(Nh::json& j) const {
-    j["coverIDcounter"] = coverIDcounter;
-}
-
-void Cache::Save(CStr path) const {
-    if (!modified) return;
-
-    const Path p = path.Data();
+void Cache::Write() const {
+    const Path p = C_ROOT_PATH;
 
     Fs::create_directory(p);
 
-    {
-        std::ofstream output { p / C_SONGS_FILE };
-        Nh::json jSongs;
-        WriteSongsTo(jSongs);
-        output << jSongs;
+    if (songs.modified) { // songs.json
+        JsonWriter w;
+        songs.Write(w);
+        Text::WriteFile(Songs::FILE, w.Result());
     }
 
-    {
-        std::ofstream output { p / C_GENERAL_FILE };
-        Nh::json jGeneral;
-        WriteGeneralTo(jGeneral);
-        output << jGeneral;
+    { // general.json
+        JsonWriter w;
+        general.Write(w);
+        Text::WriteFile(General::FILE, w.Result());
     }
+}
+
+String Cache::AddCover(Bytes imgBytes) {
+    String cachedName = Text::Format("{}.png", ToHexString(general.coverIDcounter++).AsStr());
+    Text::WriteFileBinary(
+        Text::Format("{}{}", C_COVERS_PATH, cachedName).IntoCStr(),
+        imgBytes
+    );
+    return cachedName;
+}
+
+OptRef<const TrackCache> Cache::TryFetchTrack(const Path& path) const {
+    return songs.tracks.Get(path);
+}
+
+OptRef<TrackCache> Cache::TryModifyTrack(const Path& path) {
+    auto t = songs.tracks.Get(path);
+    if (!t) return nullptr;
+    songs.modified = true;
+    return t;
+}
+
+void Cache::AddTrack(const Track& track, String coverPath) {
+    songs.tracks.Insert({
+        .filename         = track.filePath,
+        .coverFilename    = std::move(coverPath),
+        .name             = track.title,
+        .artist           = track.artist,
+        .album            = track.album,
+        .durationMs       = (int)(track.durationSec * 1000.0f),
+        .lastModifiedTime = FileTime::clock::now(),
+    });
+    songs.modified = true;
 }

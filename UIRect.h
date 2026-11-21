@@ -3,6 +3,7 @@
 #include "GUI/Canvas.h"
 #include "Utils/Math/Rect.h"
 
+class Icon;
 using namespace Quasi;
 using namespace Math;
 using namespace Graphics;
@@ -74,6 +75,7 @@ static const fColor
     DARK_GRAY      = 0x5c6370_rgbf,
     BACKGROUND     = 0x171a1f_rgbf,
     BACKGROUND_ALT = 0x20242b_rgbf,
+    BACKGROUND_SEC = 0x272b34_rgbf,
     RED            = 0xc51f1f_rgbf,
     ACCENT         = 0x61afef_rgbf;
 static constexpr float ROUNDING_RADIUS = 10.0f;
@@ -175,6 +177,8 @@ public:
     void Background(Canvas& c, const fColor& color, float border = 0) const;
     void Background(Canvas& c, const fColor& color, float tr, float br, float tl, float bl) const;
     void Capsule(Canvas& c, const fColor& color) const;
+    void Circle(Canvas& c, const fColor& color) const;
+    void Icon(Canvas& c, const Icon& icon, const fColor& color, float size) const;
     void Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align = TextAlign::LEFT, bool bold = false) const;
 };
 

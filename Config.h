@@ -1,19 +1,6 @@
 #pragma once
-#include "Utils/CStr.h"
-#include "Utils/String.h"
+#include "Playlist.h"
 #include "Utils/Vec.h"
-#include "nlohmann-json.h"
-#include "Track.h"
-
-using namespace Quasi;
-using namespace Math;
-namespace Nh = nlohmann;
-
-struct PlaylistConfig {
-    String configFilename; // config/playlists/...
-    String name;
-    Vec<Path> songFilenames;
-};
 
 class Config {
 public:
@@ -22,14 +9,16 @@ public:
     // │  ├─ likedsongs.json
     // │  └─ ...
     // └─ settings.json
-    static constexpr const char
-        *CONF_ROOT_PATH = "config/",
-        *CONF_PLAYLIST_PATH = "playlists/";
+    static constexpr const char* CONF_ROOT_PATH = "config/";
 
-    Vec<PlaylistConfig> playlists; // stored in ./playlists/
+    struct PlaylistLibrary {
+        static constexpr const char* PATH = "config/playlists/";
+        Vec<Playlist> playlists; // stored in ./playlists/
 
-    static Config Load(CStr path = CONF_ROOT_PATH);
-    void LoadPlaylistsFrom(const Nh::json& j, Str filename);
+        void Write() const;
+        void Read();
+    } playlistLibrary;
 
-    void Save(CStr path = CONF_ROOT_PATH) const;
+    static Config Read();
+    void Write() const;
 };

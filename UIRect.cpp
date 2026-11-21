@@ -306,12 +306,26 @@ void UIRect::Background(Canvas& c, const fColor& color, float tr, float br, floa
 }
 
 void UIRect::Capsule(Canvas& c, const fColor& color) const {
-    [[maybe_unused]] const auto _2 = c.PushStyles();
+    [[maybe_unused]] const auto _ = c.PushStyles();
 
-    const float r = rect.Width() / 2;
+    const float r = std::min(rect.Width() / 2, rect.Height() / 2);
     c.Stroke(color);
     c.StrokeWeight(r);
     c.DrawLine(r, rect.Size() - r);
+}
+
+void UIRect::Circle(Canvas& c, const fColor& color) const {
+    [[maybe_unused]] const auto _ = c.PushStyles();
+
+    const float r = std::min(rect.Width() / 2, rect.Height() / 2);
+    c.Stroke(color);
+    c.StrokeWeight(r);
+    c.DrawPoint(r);
+}
+
+void UIRect::Icon(Canvas& c, const ::Icon& icon, const fColor& color, float size) const {
+    const float s = rect.Width(), iconWidth = icon.viewBox.Width();
+    c.DrawMesh(icon.mesh, s * (0.5f - 0.5f * size), s / iconWidth * size, color);
 }
 
 void UIRect::Label(Canvas& c, Str text, const fColor& color, TextAlign::AlignOptions align, bool bold) const {

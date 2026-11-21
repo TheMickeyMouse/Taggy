@@ -6,7 +6,6 @@
 #include "Playbar.h"
 #include "Sidebar.h"
 #include "Titlebar.h"
-#include "Playlist.h"
 #include "PlaylistView.h"
 
 using namespace Quasi;
@@ -30,8 +29,8 @@ public:
     MusicDisplay uMusic;
     PlaylistView uPlaylistView;
 
-    Playlist playlist;
-    OptRef<Track> currentTrack;
+    IndexRef<Track, 0> currentTrackIdx = 0;
+    IndexRef<Playlist, 0> currentPlaylistIdx = 0;
 
     Cache cache;
     Config config;
@@ -54,7 +53,8 @@ public:
 
     static String FormatSeconds(int seconds);
 
-    void SelectTrack(OptRef<Track> track);
+    void SelectTrack(u32 playlistIdx, u32 trackIdx);
+    Track& CurrentTrack();
 
     inline static OptRef<App> Instance = nullptr;
     static Font& GetFont();

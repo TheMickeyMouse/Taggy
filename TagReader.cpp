@@ -612,7 +612,7 @@ ID3v2::TagFieldPair ID3v2::Tags::Date(Str date) {
 TagReader::TagReader(std::filesystem::path filename)
     : file(filename, std::ios::in | std::ios::binary) {
     if (file.fail()) {
-        Debug::QError$("Failed to open file {}!", filename.string().c_str());
+        Debug::QError$("Failed to open file {}!", Text::WStr(filename.c_str()));
     }
 }
 
@@ -916,10 +916,10 @@ bool TagReader::ReadMpegData(std::istream& file, ID3v2::Metadata& meta, Out<u32&
 
 bool TagReader::ReadTextWithEncoding(bool isUtf16, Bytes string, String& result, u32& bytesRead) {
     if (isUtf16) {
-        Span<const u16> words = string.Transmute<Text::Utf16>().SplitOnce(0)[1_st];
+        Span<const Text::Utf16> words = string.Transmute<Text::Utf16>().SplitOnce(0)[1_st];
         bytesRead = (words.Length() + 1) * 2;
         // detect bom
-        const u16 bom = words[0];
+        const Text::Utf16 bom = words[0];
         const bool needsBswap = bom == 0xFFFE;
 
         auto txt = needsBswap ? Text::Utf16BswapTo8(words.Skip(1)) : Text::Utf16To8(words.Skip(1));
@@ -1051,10 +1051,10 @@ TagWriter::TagWriter(std::filesystem::path source, std::filesystem::path filenam
     : input(source, std::ios::binary),
       file(filename, std::ios::trunc | std::ios::binary) {
     if (input.fail()) {
-        Debug::QError$("Failed to open input file {}!", source.string().c_str());
+        Debug::QError$("Failed to open input file {}!", Text::WStr(source.c_str()));
     }
     if (file.fail()) {
-        Debug::QError$("Failed to open output file {}!", filename.string().c_str());
+        Debug::QError$("Failed to open output file {}!", Text::WStr(filename.c_str()));
     }
 }
 
@@ -1139,9 +1139,9 @@ void TagWriter::WriteMpegFrames(std::istream& input, std::ostream& output) {
 }
 
 bool TagWriter::NeedsUtf16(Str text) {
-    for (const auto c : Text::CodepointIter::FromUtf8(text)) {
-        Debug::QAssert$(c.HasValue(), "invalid character!");
-        if (*c > 0x7F) return true; // requires utf16
+    for (const auto c : Text::Utf8To32Iter::New(text)) {
+        Debug::QAssert$(!c.IsEmpty(), "invalid character!");
+        if (c[0] > 0x7F) return true; // requires utf16
     }
     return false;
 }
@@ -1152,9 +1152,9 @@ bool TagWriter::WriteUtfString(bool useUtf16, Vec<byte>& data, Str text, bool in
 }
 
 bool TagWriter::WriteLatinString(Vec<byte>& data, Str text, bool includeNullTerm) {
-    for (const auto c : Text::CodepointIter::FromUtf8(text)) {
+    for (const auto c : Text::Utf8To32Iter::New(text)) {
         if (!c) return false;
-        data.Push((char)*c);
+        data.Push((char)c[0]);
     }
     if (includeNullTerm) data.Push(0);
     return true;
@@ -1166,15 +1166,9 @@ bool TagWriter::WriteUtf16String(Vec<byte>& data, Str text, bool includeNullTerm
     Memory::WriteU16Native(0xFEFF, data.Data() + data.Length() - 2);
 
     // actuall characters
-    for (const auto c : Text::CodepointIter::FromUtf8(text)) {
+    for (const auto c : Text::CodepointIter<Text::Utf8, Text::Utf16>::New(text)) {
         if (!c) return false;
-        Text::Utf16 cp[2];
-        u32 cpWritten = 0;
-        if (!Text::TryUtf32CharTo16(*c, cp, 2, cpWritten)) return false;
-
-        const usize p = data.Length();
-        data.ResizeExtra(cpWritten * 2);
-        Memory::MemCopyNoOverlap(&data[p], cp, cpWritten * 2);
+        data.Extend(c.AsBytes());
     }
     if (includeNullTerm) {
         data.Push(0);

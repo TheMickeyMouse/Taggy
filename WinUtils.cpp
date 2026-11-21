@@ -1,13 +1,18 @@
 #include "Utils/Debug/Logger.h"
+#include "Utils/Text/UTF.h"
+#include <cstring>
 #include "windows.h"
+#include "shlobj.h"
 #include "WinUtils.h"
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include "Quasi/Dependencies/GLFW/include/GLFW/glfw3native.h"
 #include "Utils/Math/Vector.h"
+#undef ERROR
 
 namespace WinUtils {
     using namespace Quasi::Math;
-    
+
+    HWND mainHwnd = nullptr;
     WNDPROC originalWinProc;
     int titlebarWidth, titlebarHeight;
 
@@ -181,23 +186,91 @@ namespace WinUtils {
         return CallWindowProc(originalWinProc, hWnd, uMsg, wParam, lParam);
     }
 
-    void UseCustomTitlebar(GLFWwindow* window, int titleHeight, int titleWidth) {
-        HWND hWnd = glfwGetWin32Window(window);
+    void SetHwnd(GLFWwindow* window) {
+        mainHwnd = glfwGetWin32Window(window);
+    }
 
-        LONG_PTR lStyle = GetWindowLongPtr(hWnd, GWL_STYLE);
+    void UseCustomTitlebar(int titleHeight, int titleWidth) {
+        LONG_PTR lStyle = GetWindowLongPtr(mainHwnd, GWL_STYLE);
         lStyle |= WS_THICKFRAME | WS_SYSMENU | WS_VISIBLE | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-        SetWindowLongPtr(hWnd, GWL_STYLE, lStyle);
+        SetWindowLongPtr(mainHwnd, GWL_STYLE, lStyle);
 
         RECT windowRect;
-        GetWindowRect(hWnd, &windowRect);
+        GetWindowRect(mainHwnd, &windowRect);
         int width = windowRect.right - windowRect.left;
         int height = windowRect.bottom - windowRect.top;
 
         titlebarHeight = titleHeight;
         titlebarWidth = titleWidth;
 
-        originalWinProc = (WNDPROC)GetWindowLongPtr(hWnd, GWLP_WNDPROC);
-        (void)SetWindowLongPtr(hWnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc));
-        SetWindowPos(hWnd, NULL, 0, 0, width, height, SWP_FRAMECHANGED | SWP_NOMOVE);
+        originalWinProc = (WNDPROC)GetWindowLongPtr(mainHwnd, GWLP_WNDPROC);
+        (void)SetWindowLongPtr(mainHwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(WindowProc));
+        SetWindowPos(mainHwnd, NULL, 0, 0, width, height, SWP_FRAMECHANGED | SWP_NOMOVE);
+    }
+
+    template <class T>
+    struct Obj {
+        T* ptr;
+        Obj(T* p) : ptr(p) {}
+
+        T* operator->() const { return ptr; }
+        T** operator&() { return &ptr; }
+
+        ~Obj() { ptr->Release(); }
+    };
+
+    Vec<Path> OpenFileDialog() {
+        // https://learn.microsoft.com/en-us/windows/win32/shell/common-file-dialog
+        // CoCreate the File Open Dialog object.
+        Obj<IFileOpenDialog> fd = nullptr;
+        if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&fd)))) {
+            Debug::QError$("WIN: couldn't create file dialog");
+            return {};
+        }
+
+        static constexpr u32 FLAGS = FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_ALLOWMULTISELECT;
+        // Before setting, always get the options first in order
+        // not to override existing options.
+        if (DWORD flags; FAILED(fd->GetOptions(&flags)) || FAILED(fd->SetOptions(flags | FLAGS))) {
+            Debug::QError$("WIN: failed to set file dialog flags");
+            return {};
+        }
+
+        static constexpr COMDLG_FILTERSPEC SAVE_FILTERS[] = {
+            { L"Songs", L"*.*" }
+        };
+
+        // set the default filter to the first one (one-based index)
+        if (FAILED(fd->SetFileTypes(std::size(SAVE_FILTERS), SAVE_FILTERS)) || FAILED(fd->SetFileTypeIndex(1))) {
+            Debug::QError$("WIN: failed to set file dialog filters");
+            return {};
+        }
+
+        if (FAILED(fd->Show(nullptr))) {
+            return {}; // show the dialog
+        }
+
+        // Obtain the result once the user clicks
+        // the 'Open' button.
+        // The result is an IShellItem object.
+        Obj<IShellItemArray> itemResults = nullptr;
+        if (FAILED(fd->GetResults(&itemResults))) return {};
+
+        DWORD numItems = 0;
+        itemResults->GetCount(&numItems);
+        Vec<Path> paths = Vec<Path>::WithCap(numItems);
+        for (u32 i = 0; i < numItems; ++i) {
+            PWSTR pszFilePath = nullptr;
+            Obj<IShellItem> item = nullptr;
+
+            itemResults->GetItemAt(i, &item);
+
+            if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &pszFilePath))) continue;
+
+            paths.Push(pszFilePath);
+            CoTaskMemFree(pszFilePath);
+        }
+
+        return paths;
     }
 }

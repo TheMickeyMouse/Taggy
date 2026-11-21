@@ -1,6 +1,7 @@
 #include "PlaylistView.h"
 
 #include "App.h"
+#include "WinUtils.h"
 
 SongView SongView::Infer(UIRect& root)  {
     SongView view;
@@ -28,11 +29,13 @@ void SongView::AddView(UIRect& container) {
     /* artist */ info->Pack(Dir::TOP, 0.24_per, "sv.InfoArtist");
 }
 
-void SongView::Draw(Canvas& canvas, u32 i, Track& track) {
+void SongView::Draw(Canvas& canvas, u32 i, Config::PlaylistLibrary& lib, u32 playlistIdx, u32 trackIdx) {
     [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
 
-    constexpr float RADIUS = 5;
-    const fColor bgColor = i % 2 == 1 ? BACKGROUND_ALT + 0.03f : BACKGROUND_ALT;
+    auto& track = lib.playlists[playlistIdx].tracks[trackIdx];
+
+    static constexpr float RADIUS = 5;
+    const fColor& bgColor = i % 2 == 1 ? BACKGROUND_SEC : BACKGROUND_ALT;
     uRoot->Background(canvas, bgColor);
 
     uNumber->Label(canvas, Text::Format("{}", i + 1), LIGHT_GRAY, TextAlign::RIGHT);
@@ -47,48 +50,78 @@ void SongView::Draw(Canvas& canvas, u32 i, Track& track) {
     }
 
     if (uCover->Clicked()) {
-        App::Instance->SelectTrack(track);
+        App::Instance->SelectTrack(playlistIdx, trackIdx);
     }
 }
 
-PlaylistView::PlaylistView(UIRect& root, Canvas& canvas, OptRef<Playlist> playlist)
-    : uRoot        (root  .Pack(Dir::TOP,  1.0f * Length::RPER, "pv",        { .margin = { ROUNDING_RADIUS, 0 } })),
-      uTitle       (uRoot->Pack(Dir::TOP,  0.2f * Length::FH,   "pv.Title",  { .padding = 2 * PADDING / 3, .margin = {{ .btm = PADDING / 2 }} })),
-      uRest        (uRoot->Pack(Dir::LEFT, 1.0f * Length::PER,  "pv.Rest")),
-
-      uPlaylistIcon (uTitle->Pack(Dir::LEFT, 1.0_fh,  "pv.PlaylistIcon",  { .margin = {{ .right = PADDING / 2 }}, })),
-      uPlaylistSrc  (uTitle->Pack(Dir::TOP,  17.0_px, "pv.PlaylistSrc",   { .margin = {{ .btm = PADDING / 4 }}, })),
-      uPlaylistTitle(uTitle->Pack(Dir::TOP,  0.5_fh,  "pv.PlaylistTitle", { .margin = {{ .btm = PADDING / 4 }}, })),
-
-      uScrollRegion(uRest->Pack(Dir::RIGHT, SCROLLBAR_THICKNESS * Length::PX, "pv.ScrollRegion")),
-      uScrollbar   (uScrollRegion->Pack(Dir::TOP, 0.0_px, "pv.Scrollbar", { .margin = 2 })),
-
-      uTracks      (uRest->Pack(Dir::RIGHT, 1.0f * Length::RPER, "pv.Tracks", { .margin = {{ .right = -SCROLLBAR_THICKNESS }} })),
-
-      playlist(playlist),
-      vPlaylistIcon(Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>)", canvas))
+PlaylistView::TopView::TopView(UIRect& root, Canvas& canvas)
+    : uRoot       (root.Pack(Dir::TOP,  0.2f * Length::FH, "pv.Title",   { .padding = PADDING, .margin = {{ .btm = PADDING }} })),
+      uControlSide(uRoot->Pack(Dir::RIGHT, 40.0_px, "pv.ControlSide",    { .margin = {{ .left = PADDING }} })),
+      uIcon       (uRoot->Pack(Dir::LEFT, 1.0_fh,  "pv.PlaylistIcon",    { .margin = {{ .right = PADDING }}, })),
+      uSrcInfo    (uRoot->Pack(Dir::TOP,  19.0_px, "pv.PlaylistSrc",     { .margin = {{ .btm = PADDING / 2 }}, })),
+      uTitle      (uRoot->Pack(Dir::TOP,  38.0_px, "pv.PlaylistTitle",   { .margin = {{ .btm = PADDING / 2 }}, })),
+      uAddBtn     (uControlSide->Pack(Dir::TOP, 1.0_fw, "pv.AddSongBtn", { .margin = {{ .btm = PADDING / 2 }} })),
+      uEditBtn    (uControlSide->Pack(Dir::TOP, 1.0_fw, "pv.EditBtn",    { .margin = {{ .btm = PADDING / 2 }} })),
+      vIcon(Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3"/></svg>)", canvas)),
+      vAddIcon(Icon::FromCode({ 0, 24 }, canvas, [] (Canvas& c) {
+          c.StrokeWeight(1);
+          c.DrawLine({ 6, 12 }, { 18, 12 });
+          c.DrawLine({ 12, 6 }, { 12, 18 });
+      })),
+      vEditIcon(Icon::FromSVG(R"(<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>)", canvas))
 {}
 
-float PlaylistView::PlaylistHeight() const {
-    return SongView::HEIGHT * (float)playlist->tracks.Length();
+void PlaylistView::TopView::Update(float dt) {
+    if (uAddBtn->Clicked()) {
+        if (auto files = WinUtils::OpenFileDialog())
+            Outer()->TriggerAddSong(files);
+    }
 }
 
-float PlaylistView::VisibleHeight() const {
+void PlaylistView::TopView::Draw(Canvas& canvas) {
+    [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
+    uRoot->Background(canvas, BACKGROUND_ALT, PADDING / 4, PADDING / 2, PADDING / 4, PADDING / 2);
+
+    static const fColor PLAYLIST_COLOR = 0xa83fd7_rgbf;
+    QWith$(uIcon->BeginDraw(canvas)) {
+        uIcon->Background(canvas, PLAYLIST_COLOR, PADDING / 2);
+        uIcon->Icon(canvas, vIcon, WHITE, 0.5f);
+    }
+
+    uSrcInfo->Label(canvas, Text::Format("{} songs", Outer()->GetPlaylist().NumSongs()), LIGHT_GRAY);
+    uTitle  ->Label(canvas, Outer()->GetPlaylist().name, WHITE, TextAlign::LEFT, true);
+
+    QWith$(uAddBtn->BeginDraw(canvas)) {
+        uAddBtn->Circle(canvas, BACKGROUND);
+        uAddBtn->Icon(canvas, vAddIcon, WHITE, 0.8f);
+    }
+    QWith$(uEditBtn->BeginDraw(canvas)) {
+        uEditBtn->Circle(canvas, BACKGROUND);
+        uEditBtn->Icon(canvas, vEditIcon, WHITE, 0.6f);
+    }
+}
+
+PlaylistView::ListView::ListView(UIRect& root)
+    : uRoot        (root.Pack(Dir::LEFT, 1.0f * Length::PER,  "pv.Rest")),
+      uScrollRegion(uRoot->Pack(Dir::RIGHT, SCROLLBAR_THICKNESS * Length::PX, "pv.ScrollRegion")),
+      uScrollbar   (uScrollRegion->Pack(Dir::TOP, 0.0_px, "pv.Scrollbar", { .margin = 2 })),
+      uTracks      (uRoot->Pack(Dir::RIGHT, 1.0f * Length::RPER, "pv.Tracks", { .margin = {{ .right = -SCROLLBAR_THICKNESS }} }))
+{}
+
+float PlaylistView::ListView::PlaylistHeight() const {
+    return SongView::HEIGHT * (float)Outer()->GetPlaylist().NumSongs();
+}
+
+float PlaylistView::ListView::VisibleHeight() const {
     return uTracks->rect.Height();
 }
 
-float PlaylistView::MaxScrollAmount() const {
+float PlaylistView::ListView::MaxScrollAmount() const {
     return PlaylistHeight() - VisibleHeight();
 }
 
-void PlaylistView::ScrollBy(float dy) { ScrollTo(yPosition.target + dy); }
-
-void PlaylistView::ScrollTo(float y) {
-    yPosition.target = std::clamp(y, 0.0f, MaxScrollAmount());
-}
-
-void PlaylistView::Update(float dt) {
-    if (uRest->Hovered()) {
+void PlaylistView::ListView::Update(float dt) {
+    if (uRoot->Hovered()) {
         ScrollBy(-uTracks->ScrollDelta() * (0.9f * SongView::HEIGHT));
     }
     // lets say the full playlist is H units high while the display area is only h units.
@@ -106,18 +139,29 @@ void PlaylistView::Update(float dt) {
     }
 
     yPosition.Update(dt);
-    if (!yPosition.IsStable()) UpdateScrollingElements();
+    if (!yPosition.IsStable()) {
+        RefreshScrollingElements();
+        RefreshHeight();
+    }
 }
 
-void PlaylistView::UpdateScrollingElements() {
+void PlaylistView::ListView::ScrollBy(float dy) { ScrollTo(yPosition.target + dy); }
+
+void PlaylistView::ListView::ScrollTo(float y) {
+    yPosition.target = std::clamp(y, 0.0f, MaxScrollAmount());
+}
+
+void PlaylistView::ListView::RefreshScrollingElements() {
     uTracks->padding.top = -std::fmod(yPosition.displayValue, SongView::HEIGHT);
     uTracks->ComputeLayout();
+}
 
+void PlaylistView::ListView::RefreshHeight() {
     uScrollRegion->padding.top = yPosition.displayValue * VisibleHeight() / PlaylistHeight();
     uScrollRegion->ComputeLayout();
 }
 
-void PlaylistView::OnLayoutChange() {
+void PlaylistView::ListView::OnLayoutChange() {
     {
         const float fullScrollableHeight = PlaylistHeight(),
                     shownHeight = VisibleHeight(),
@@ -136,41 +180,64 @@ void PlaylistView::OnLayoutChange() {
     }
     numShownTracks = shouldDisplayTracks;
 
-    uRest->ComputeLayout();
+    uRoot->ComputeLayout();
 }
 
-void PlaylistView::Draw(Canvas& canvas) {
-    [[maybe_unused]] const auto _ = uRoot->BeginDraw(canvas);
-
-    QWith$(uTitle->BeginDraw(canvas)) {
-        uTitle->Background(canvas, BACKGROUND_ALT, PADDING / 4, PADDING / 2, PADDING / 4, PADDING / 2);
-
-        static const fColor PLAYLIST_COLOR = 0xa83fd7_rgbf;
-        QWith$(uPlaylistIcon->BeginDraw(canvas)) {
-            uPlaylistIcon->Background(canvas, PLAYLIST_COLOR, PADDING / 2);
-            const float s = uPlaylistIcon->rect.Width(), iconWidth = vPlaylistIcon.viewBox.Width();
-            canvas.DrawMesh(vPlaylistIcon.mesh, s / 4, s / (2 * iconWidth), WHITE);
-        }
-
-        uPlaylistSrc  ->Label(canvas, "[placeholder]", LIGHT_GRAY);
-        uPlaylistTitle->Label(canvas, playlist->name, WHITE, TextAlign::LEFT, true);
-    }
-
+void PlaylistView::ListView::Draw(Canvas& canvas) {
     QWith$(uTracks->BeginDraw(canvas)) {
         [[maybe_unused]] const auto clip = canvas.BeginClip(uTracks->rect);
 
         int skipAmount = (int)(yPosition.displayValue / SongView::HEIGHT);
         for (const auto [i, child] : Iter::Enumerate(uTracks.Children())) {
             const int physicalIdx = i + skipAmount;
-            auto track = playlist->Request(physicalIdx);
+            auto track = Outer()->GetPlaylist().Request(physicalIdx);
             if (!track) continue;
 
             SongView v = SongView::Infer(child);
-            v.Draw(canvas, physicalIdx, *track);
+            v.Draw(canvas, physicalIdx, *Outer()->playlistLibrary, Outer()->playlistIdx, physicalIdx);
         }
     }
 
     QWith$(uScrollbar->BeginDraw(canvas)) {
         uScrollbar->Capsule(canvas, LIGHT_GRAY.AddAlpha(uScrollbar->Hovered() || uScrollbar->Pressed() ? 0.3f : 0.2f));
     }
+}
+
+Playlist& PlaylistView::GetPlaylist() {
+    return playlistLibrary->playlists[playlistIdx];
+}
+
+const Playlist& PlaylistView::GetPlaylist() const {
+    return playlistLibrary->playlists[playlistIdx];
+}
+
+PlaylistView::PlaylistView(UIRect& root, Canvas& canvas)
+    : uRoot (root  .Pack(Dir::TOP,  1.0f * Length::RPER, "pv",        { .margin = { ROUNDING_RADIUS, 0 } })),
+      uTop  (*uRoot, canvas),
+      uList (*uRoot) {
+
+}
+
+void PlaylistView::Update(float dt) {
+    uTop.Update(dt);
+    uList.Update(dt);
+}
+
+void PlaylistView::OnLayoutChange() {
+    uList.OnLayoutChange();
+}
+
+void PlaylistView::Draw(Canvas& canvas) {
+    uTop.Draw(canvas);
+    uList.Draw(canvas);
+}
+
+void PlaylistView::TriggerAddSong(Span<const Path> paths) {
+    GetPlaylist().AddSongs(paths);
+}
+
+void PlaylistView::Select(Config::PlaylistLibrary& playlistLib, u32 newPlaylistIdx) {
+    playlistLibrary = playlistLib;
+    playlistIdx = newPlaylistIdx;
+    GetPlaylist().Load();
 }

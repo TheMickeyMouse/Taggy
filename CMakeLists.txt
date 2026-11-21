@@ -9,7 +9,6 @@ target_compile_definitions(Quasi PUBLIC Q_NO_IMGUI)
 add_executable(Taggy main.cpp
         TagReader.cpp
         TagReader.h
-        nlohmann-json.h
         CLI.cpp
         App.cpp
         App.h
@@ -40,5 +39,7 @@ add_executable(Taggy main.cpp
         Config.cpp
         Config.h
         Cache.cpp
-        Cache.h)
+        Cache.h
+        Json.cpp
+        Json.h)
 target_link_libraries(Taggy Quasi dwmapi.dll)

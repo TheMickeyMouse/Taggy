@@ -1,34 +1,11 @@
 #pragma once
-#include "nlohmann-json.h"
 #include "Track.h"
 #include "Utils/String.h"
-#include "Utils/CStr.h"
 #include "Utils/HashMap.h"
-#include "Utils/Vec.h"
 
-using namespace Quasi;
-using namespace Math;
-namespace Nh = nlohmann;
+class JsonWriter;
 
 namespace Quasi {
-    // legacy conversions
-    Str LegConvert(std::string_view s);
-    std::string_view LegConvert(Str s);
-    template <class T> Vec<T> LegConvert(std::vector<T> xs) {
-        Vec<T> v = Vec<T>::Compose(xs.data(), xs.size(), xs.capacity());
-        Memory::ForgetValue(xs);
-        return v;
-    }
-
-    void to_json(Nh::json& j, Str s);
-    void from_json(const Nh::json& j, String& s);
-    template <class T> void to_json(Nh::json& j, Span<T> xs) {
-        j = std::span<T> { xs.Data(), xs.Length() };
-    }
-    template <class T> void from_json(const Nh::json& j, Vec<T>& xs) {
-        xs = LegConvert(j.get<std::vector<T>>());
-    }
-
     Bytes GetBytesOfPath(const Path& p);
 
     // measured in nanoseconds
@@ -41,41 +18,44 @@ namespace Quasi {
     Array<char, 8> ToHexString(u32 number);
 }
 
-
 namespace std::filesystem {
-    void to_json  (Nh::json& j, FileTime time);
-    void from_json(const Nh::json& j, FileTime& time);
+    void WriteJsonValue(JsonWriter& w, FileTime time);
+    void WriteJsonValue(JsonWriter& w, const Path& path);
+    void ReadFileTime(FileTime* time, Str& s);
+    void ReadPath(Path* path, Str& s);
 }
+
+template <class T, Text::FixedString A> using Field = T;
 
 // json structure:
 // "[song filename]": {
-//     "name":       "[song name]",
-//     "artist":     "[artist name]",
-//     "album":      "[album name]",
-//     "durationMs":  [duration],
-//     "cover":      "[cover file location]",
+//     "name":     "[song name]",
+//     "artist":   "[artist name]",
+//     "album":    "[album name]",
+//     "duration":  [duration],
+//     "cover":    "[cover file location]",
 //     "lastModified": [modified time],
 // }
-struct SongCache {
+struct TrackCache {
     Path filename;
-    String coverFilename;
-    String name, artist, album;
-    float durationSec;
-    FileTime lastModifiedTime;
+    Field<String,      "cover">        coverFilename;
+    Field<String,      "name">         name;
+    Field<String,      "artist">       artist;
+    Field<String,      "album">        album;
+    Field<Option<int>, "duration">     durationMs;
+    Field<FileTime,    "lastModified"> lastModifiedTime;
 
-    void ToJson(Nh::json& j) const;
-    void FromJson(const Nh::json& j);
+    void Write(JsonWriter& w) const;
+    void Read(Str& input);
 
-    void Record(const Track& track);
     Image FetchCover() const;
 
+    bool CheckOutdated() const;
+
     Hashing::Hash GetHashCode() const;
-    bool operator==(const SongCache& other) const { return filename == other.filename; }
+    bool operator==(const TrackCache& other) const { return filename == other.filename; }
     bool operator==(const Path& other) const { return filename == other; }
 };
-
-inline void to_json  (Nh::json& j, const SongCache& songCache) { songCache.ToJson(j); }
-inline void from_json(const Nh::json& j, SongCache& songCache) { songCache.FromJson(j); }
 
 class Cache {
 public:
@@ -88,25 +68,35 @@ public:
 
     static constexpr const char
         *C_ROOT_PATH    = "cache/",
-        *C_COVERS_PATH  = "cache/covers/",
-        *C_SONGS_FILE   = "songs.json",
-        *C_GENERAL_FILE = "general.json";
+        *C_COVERS_PATH  = "cache/covers/";
 
-    HashSet<SongCache> songs;
-    int coverIDcounter = 1;
+    struct Songs {
+        static constexpr const char* FILE = "cache/songs.json";
 
-    bool modified = false;
+        HashSet<TrackCache> tracks;
+        bool modified = false;
+
+        static void WriteDefault();
+        void Write(JsonWriter& w) const;
+        void Read(Str input);
+    } songs;
+
+    struct General {
+        static constexpr const char* FILE = "cache/general.json";
+
+        Field<int, "coverIDcounter"> coverIDcounter = 1;
+
+        static void WriteDefault();
+        void Write(JsonWriter& w) const;
+        void Read(Str input);
+    } general;
 
     static void RepairDefaultProfile();
+    static Cache Read();
+    void Write() const;
 
-    static Cache Load(CStr path = C_ROOT_PATH);
-    void LoadSongs(const Path& root);
-    void LoadGeneral(const Path& root);
-
-    void AddCoverToCache(Bytes imgBytes, SongCache& songEntry);
-
-    void WriteSongsTo(Nh::json& j) const;
-    void WriteGeneralTo(Nh::json& j) const;
-
-    void Save(CStr path = C_ROOT_PATH) const;
+    String AddCover(Bytes imgBytes);
+    OptRef<const TrackCache> TryFetchTrack(const Path& path) const;
+    OptRef<TrackCache> TryModifyTrack(const Path& path);
+    void AddTrack(const Track& track, String coverPath);
 };

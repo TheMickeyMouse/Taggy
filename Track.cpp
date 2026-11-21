@@ -2,7 +2,7 @@
 
 #include "App.h"
 #include "TagReader.h"
-#include "Utils/Iter/Zip.h"
+#include "Utils/Text/UTF.h"
 
 Track Track::UnloadedFromFile(Path fname) {
     Track t;
@@ -15,11 +15,11 @@ namespace Fs = std::filesystem;
 bool Track::Load(Out<Track&> track, bool lazyLoad) {
     track.loaded = true;
 
-    auto& songCache = App::GetCache().songs;
-    if (const auto c = songCache.Get(track.filePath); c && (Fs::last_write_time(track.filePath) <= c->lastModifiedTime)) {
+    auto& cache = App::GetCache();
+    if (const auto c = cache.TryFetchTrack(track.filePath); c && !c->CheckOutdated()) {
         track.title       = c->name;
         track.artist      = c->artist;
-        track.durationSec = c->durationSec;
+        track.durationSec = c->durationMs.MapOr([] (int x) { return (float)x / 1000.0f; }, f32s::NAN);
 
         if (!c->coverFilename) goto requiresRecache;
         track.cover = Texture2D::New(c->FetchCover());
@@ -28,16 +28,15 @@ bool Track::Load(Out<Track&> track, bool lazyLoad) {
 
         TagReader reader { track.filePath };
 
-        auto& cache = songCache.Insert(SongCache { .filename = track.filePath });
-
+        String cachedCoverImgPath;
         reader.SetCallback([&] (ID3v2::TagID tag, u32, ID3v2::Field field) {
             using namespace ID3v2;
             switch (tag) {
                 case TagID::APIC: {
                     const Bytes imgBytes = field.As<PictureField>()->pictureData;
-                    App::GetCache().AddCoverToCache(imgBytes, cache);
+                    cachedCoverImgPath = App::GetCache().AddCover(imgBytes);
 
-                    [[maybe_unused]] Debug::Timer timerPng { "png loading", Debug::Logger::InternalLog };
+                    [[maybe_unused]] Debug::Timer timerPng { "png loading", Debug ::Logger::InternalLog };
                     track.cover = Texture2D::LoadPNGBytes(imgBytes, {}, false);
                     break;
                 }
@@ -50,7 +49,7 @@ bool Track::Load(Out<Track&> track, bool lazyLoad) {
                     break;
                 }
                 case TagID::TALB: {
-                    track.album = field.As<TextField>()->value;
+                    track.album = std::move(field.As<TextField>()->value);
                     break;
                 }
                 default:;
@@ -59,12 +58,14 @@ bool Track::Load(Out<Track&> track, bool lazyLoad) {
 
         auto metadata = reader.ReadV2();
         if (!metadata) {
-            Debug::QWarn$("couldn't read {}; skipping...", track.filePath.string().c_str());
+            Debug::QWarn$("couldn't read {}; skipping...", Text::WStr(track.filePath.c_str()));
             return false;
         }
 
-        cache.Record(track);
-        App::GetCache().modified = true;
+        if (track.title.IsEmpty())
+            track.title = Text::Utf16To8(track.filePath.filename().c_str()).Assert("couldn't parse string!");
+
+        cache.AddTrack(track, cachedCoverImgPath);
 
         reader.file.close();
     }
@@ -81,10 +82,9 @@ void Track::LoadSoundIntoMemory() {
 
     sound = Box<ma_sound>::NewUninit();
 
-    const auto pathString = filePath.string();
-    const ma_result result = ma_sound_init_from_file(
+    const ma_result result = ma_sound_init_from_file_w(
         App::GetAudioEngine(),
-        pathString.c_str(),
+        filePath.c_str(),
         0,
         nullptr,
         nullptr,
@@ -93,7 +93,8 @@ void Track::LoadSoundIntoMemory() {
 
     if (f32s::IsNaN(durationSec)) {
         ma_sound_get_length_in_seconds(&*sound, &durationSec);
-        App::GetCache().songs.Get(filePath)->durationSec = durationSec;
+        if (auto cache = App::GetCache().TryModifyTrack(filePath))
+            cache->durationMs = (int)(durationSec * 1000);
     }
 
     if (result != MA_SUCCESS) {
